@@ -1,0 +1,83 @@
+<div class="page-container">
+  <div *ngIf="carregando" class="spinner-wrapper">
+    <mat-spinner diameter="48" />
+  </div>
+
+  <div *ngIf="!carregando && erro" class="error-state">
+    <mat-icon>error_outline</mat-icon>
+    <p>{{ erro }}</p>
+    <button mat-raised-button (click)="voltar()">Voltar</button>
+  </div>
+
+  <ng-container *ngIf="!carregando && ticket">
+    <!-- Header -->
+    <div class="detail-header">
+      <button mat-icon-button (click)="voltar()">
+        <mat-icon>arrow_back</mat-icon>
+      </button>
+      <h2>Ticket #{{ ticket.id }}</h2>
+      <span class="status-badge" [ngClass]="ticket.status">{{ ticket.status | label:'status' }}</span>
+    </div>
+
+    <div class="detail-grid">
+      <!-- Info principal -->
+      <mat-card>
+        <mat-card-header>
+          <mat-card-title>{{ ticket.titulo }}</mat-card-title>
+          <mat-card-subtitle>Criado em {{ formatarData(ticket.criadoEm) }}</mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content>
+          <p class="descricao">{{ ticket.descricao }}</p>
+          <mat-divider style="margin: 16px 0" />
+          <div class="meta-grid">
+            <div><strong>Prioridade</strong>
+              <span class="prioridade-badge" [ngClass]="ticket.prioridade">{{ ticket.prioridade | label:'prioridade' }}</span>
+            </div>
+            <div><strong>Categoria</strong><span class="chip">{{ ticket.categoria | label:'categoria' }}</span></div>
+            <div><strong>Atualizado</strong><span>{{ formatarData(ticket.atualizadoEm) }}</span></div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Análise da IA -->
+      <mat-card class="ia-card">
+        <mat-card-header>
+          <mat-icon mat-card-avatar style="color: #1976d2">smart_toy</mat-icon>
+          <mat-card-title>Análise do Agente Automático</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div *ngIf="ticket.status === 'em_analise'" class="analyzing">
+            <mat-spinner diameter="24" />
+            <span>Agente está analisando...</span>
+          </div>
+          <div *ngIf="ticket.status !== 'em_analise' && ticket.sugestaoIA" class="suggestion">
+            <p>{{ ticket.sugestaoIA }}</p>
+          </div>
+          <div *ngIf="ticket.status !== 'em_analise' && !ticket.sugestaoIA" class="no-suggestion">
+            <mat-icon>help_outline</mat-icon>
+            <span>Sem sugestão disponível</span>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Ações -->
+      <mat-card>
+        <mat-card-header>
+          <mat-card-title>Atualizar Status</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="status-actions">
+            <button
+              *ngFor="let s of statusOptions"
+              mat-stroked-button
+              [class.active]="ticket.status === s"
+              [ngClass]="'btn-' + s"
+              (click)="atualizarStatus(s)">
+              {{ s | label:'status' }}
+            </button>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    </div>
+  </ng-container>
+</div>

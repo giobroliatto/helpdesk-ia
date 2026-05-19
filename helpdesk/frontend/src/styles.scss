@@ -1,0 +1,51 @@
+@use '@angular/material' as mat;
+
+@include mat.core();
+
+$theme: mat.define-theme((
+  color: (
+    theme-type: light,
+    primary: mat.$azure-palette,
+    tertiary: mat.$blue-palette,
+  )
+));
+
+html {
+  @include mat.all-component-themes($theme);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Roboto, sans-serif;
+  background: #f5f5f5;
+}
+
+.page-container {
+  max-width: 1100px;
+  margin: 24px auto;
+  padding: 0 16px;
+}
+
+.status-badge {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  &.aberto      { background: #cdeaff; color: #0d3c72; }
+  &.em_analise  { background: #f5e7bb; color: #c26514; }
+  &.resolvido   { background: #cdffd1; color: #1d6120; }
+  &.fechado     { background: #fdc9c9; color: #5a0909; }
+}
+
+.prioridade-badge {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  &.baixa   { background: #cdffd1; color: #1d6120; }
+  &.media   { background: #ffe89d; color: #614a0a; }
+  &.alta    { background: #fdc9c9; color: #5a0909; }
+  &.critica { background: #c55e5e; color: #ffeeee; }
+}

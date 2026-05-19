@@ -1,0 +1,51 @@
+import { Component } from '@angular/core';
+import { Router } from '@angular/router';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { MatCardModule } from '@angular/material/card';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { TicketService } from '../../services/ticket.service';
+
+@Component({
+  selector: 'app-ticket-create',
+  standalone: true,
+  imports: [
+    CommonModule, FormsModule, MatCardModule, MatFormFieldModule,
+    MatInputModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule
+  ],
+  templateUrl: './ticket-create.component.html',
+  styleUrl: './ticket-create.component.scss'
+})
+export class TicketCreateComponent {
+  titulo = '';
+  descricao = '';
+  enviando = false;
+  sucesso = false;
+  ticketCriadoId: number | null = null;
+
+  constructor(private ticketService: TicketService, private router: Router) {}
+
+  criar(): void {
+    if (!this.titulo.trim() || !this.descricao.trim()) return;
+
+    this.enviando = true;
+    this.ticketService.criar({ titulo: this.titulo, descricao: this.descricao }).subscribe({
+      next: (ticket) => {
+        this.enviando = false;
+        this.sucesso = true;
+        this.ticketCriadoId = ticket.id;
+        // Redireciona para o detalhe após 2s (tempo do agente automático começar a analisar)
+        setTimeout(() => this.router.navigate(['/tickets', ticket.id]), 2000);
+      },
+      error: () => { this.enviando = false; }
+    });
+  }
+
+  voltar(): void {
+    this.router.navigate(['/tickets']);
+  }
+}

@@ -1,0 +1,57 @@
+<div class="page-container">
+  <mat-card class="create-card">
+    <mat-card-header>
+      <mat-card-title>
+        <button mat-icon-button (click)="voltar()" style="margin-right: 8px">
+          <mat-icon>arrow_back</mat-icon>
+        </button>
+        Novo Ticket
+      </mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+      <!-- Formulário -->
+      <div *ngIf="!sucesso">
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Título</mat-label>
+          <input matInput [(ngModel)]="titulo" placeholder="Ex: Computador não liga" />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Descrição</mat-label>
+          <textarea
+            matInput
+            [(ngModel)]="descricao"
+            rows="5"
+            placeholder="Descreva o problema com detalhes...">
+          </textarea>
+        </mat-form-field>
+
+        <div class="info-box">
+          <mat-icon>smart_toy</mat-icon>
+          <span>Ao criar o ticket, um <strong>agente de IA</strong> irá analisá-lo automaticamente,
+            classificando prioridade, categoria e sugerindo uma solução.</span>
+        </div>
+      </div>
+
+      <!-- Feedback de sucesso -->
+      <div *ngIf="sucesso" class="success-box">
+        <mat-icon>check_circle</mat-icon>
+        <h3>Ticket #{{ ticketCriadoId }} criado!</h3>
+        <p>O agente automático está analisando seu ticket...</p>
+        <mat-spinner diameter="24" />
+      </div>
+    </mat-card-content>
+
+    <mat-card-actions *ngIf="!sucesso">
+      <button mat-button (click)="voltar()">Cancelar</button>
+      <button
+        mat-raised-button color="primary"
+        (click)="criar()"
+        [disabled]="!titulo.trim() || !descricao.trim() || enviando">
+        <mat-spinner *ngIf="enviando" diameter="20" style="display: inline-block" />
+        <span *ngIf="!enviando" class="btn-label"><mat-icon>send</mat-icon> Criar Ticket</span>
+      </button>
+    </mat-card-actions>
+  </mat-card>
+</div>

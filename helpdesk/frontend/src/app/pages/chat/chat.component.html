@@ -1,0 +1,67 @@
+<div class="page-container">
+  <mat-card class="chat-card">
+    <mat-card-header>
+      <mat-icon mat-card-avatar style="color: #1976d2">smart_toy</mat-icon>
+      <mat-card-title>Chat com Agente Interativo</mat-card-title>
+      <mat-card-subtitle>Pergunte sobre tickets, prioridades, resumos e mais</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content class="messages-area">
+      <div *ngIf="mensagens.length === 0" class="empty-chat">
+        <mat-icon>chat_bubble_outline</mat-icon>
+        <p>Olá! Sou o assistente de suporte interno.</p>
+        <p>Experimente perguntar:</p>
+        <ul>
+          <li>"Quais tickets estão abertos?"</li>
+          <li>"Me dá um resumo dos tickets por status"</li>
+          <li>"Há algum ticket com prioridade crítica?"</li>
+        </ul>
+      </div>
+
+      <div class="messages">
+        <div
+          *ngFor="let m of mensagens"
+          class="message"
+          [ngClass]="m.role">
+          <div *ngIf="m.role === 'assistant'" class="avatar">
+            <mat-icon>smart_toy</mat-icon>
+          </div>
+          <div class="bubble" [innerHTML]="m.conteudo | markdown"></div>
+          <div *ngIf="m.role === 'user'" class="avatar">
+            <mat-icon>person</mat-icon>
+          </div>
+        </div>
+
+        <div *ngIf="enviando" class="message assistant typing">
+          <div class="avatar"><mat-icon>smart_toy</mat-icon></div>
+          <div class="bubble">
+            <mat-spinner diameter="16" />
+            <span>Pensando...</span>
+          </div>
+        </div>
+      </div>
+
+      <div #messagesEnd></div>
+    </mat-card-content>
+
+    <mat-card-actions class="input-area">
+      <mat-form-field appearance="outline" class="input-field">
+        <textarea
+          matInput
+          [(ngModel)]="texto"
+          (keydown)="onEnter($event)"
+          placeholder="Digite sua mensagem... (Enter para enviar)"
+          rows="1"
+          [disabled]="enviando">
+        </textarea>
+      </mat-form-field>
+      <button
+        mat-fab
+        color="primary"
+        (click)="enviar()"
+        [disabled]="!texto.trim() || enviando">
+        <mat-icon>send</mat-icon>
+      </button>
+    </mat-card-actions>
+  </mat-card>
+</div>

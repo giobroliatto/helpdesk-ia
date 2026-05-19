@@ -1,0 +1,13 @@
+<mat-toolbar color="primary">
+  <mat-icon style="margin-right: 8px">support_agent</mat-icon>
+  <span style="font-weight: 600">HelpDesk IA</span>
+  <span style="flex: 1"></span>
+  <a mat-button routerLink="/tickets" routerLinkActive="active-link">
+    <mat-icon>confirmation_number</mat-icon> Tickets
+  </a>
+  <a mat-button routerLink="/chat" routerLinkActive="active-link">
+    <mat-icon>chat</mat-icon> Chat IA
+  </a>
+</mat-toolbar>
+
+<router-outlet />
