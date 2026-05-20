@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import prisma from "../db/prisma";
 import { ticketToolsSchema, executarTicketTool } from "../tools/ticketTools";
+import { buscarConhecimentoRelevante } from "../rag/buscar";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-sonnet-4-5";
@@ -46,10 +47,25 @@ export async function agenteChatInterativo(
   // Adiciona a mensagem atual do usuário
   messages.push({ role: "user", content: mensagemUsuario });
 
+  // ---- RAG: busca conhecimento relevante para a pergunta ----
+  // Antes de chamar o Claude, verificamos se há artigos na base de conhecimento
+  // com significado próximo à mensagem do usuário. Se houver, injetamos como
+  // contexto no system prompt — o modelo responde com informações reais da empresa.
+  const contextosRAG = await buscarConhecimentoRelevante(mensagemUsuario);
+  let systemPrompt = SYSTEM_INTERATIVO;
+  if (contextosRAG.length > 0) {
+    const contextosTexto = contextosRAG
+      .map((c) => `### ${c.titulo}\n${c.conteudo}`)
+      .join("\n\n");
+    systemPrompt += `\n\n---\nCONHECIMENTO RELEVANTE DA BASE INTERNA:\n${contextosTexto}\n---\nUse essas informações ao responder. Cite a fonte pelo título quando relevante.`;
+    console.log(`[RAG] ${contextosRAG.length} artigo(s) injetado(s) no contexto: ${contextosRAG.map(c => c.titulo).join(', ')}`);
+  }
+  // ----------------------------------------------------------
+
   let response = await client.messages.create({
     model: MODEL,
     max_tokens: 500,
-    system: SYSTEM_INTERATIVO,
+    system: systemPrompt,
     tools: ticketToolsSchema,
     messages,
   });
@@ -82,7 +98,7 @@ export async function agenteChatInterativo(
     response = await client.messages.create({
       model: MODEL,
       max_tokens: 500,
-      system: SYSTEM_INTERATIVO,
+      system: systemPrompt,
       tools: ticketToolsSchema,
       messages,
     });

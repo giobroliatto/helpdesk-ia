@@ -33,3 +33,13 @@ model MensagemChat {
 
   ticket    Ticket?  @relation(fields: [ticketId], references: [id])
 }
+
+// Base de conhecimento para RAG
+// Cada entrada é um artigo de suporte com seu vetor de embedding armazenado como JSON
+model BaseConhecimento {
+  id        Int      @id @default(autoincrement())
+  titulo    String
+  conteudo  String
+  embedding String   // vetor float[] serializado: "[0.12, 0.34, ...]"
+  criadoEm DateTime @default(now())
+}
