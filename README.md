@@ -84,6 +84,15 @@ npm start
 
 Frontend roda em **http://localhost:4200**
 
+### Servidor MCP (opcional)
+
+```bash
+cd helpdesk/backend
+npx ts-node src/mcp/server.ts
+```
+
+Ou configure o `.vscode/mcp.json` (já incluído) e o VS Code inicia automaticamente.
+
 ---
 
 ## 🧠 Como Funcionam os Agentes
@@ -102,6 +111,9 @@ Frontend roda em **http://localhost:4200**
 - `listar_tickets` — lista tickets com filtros
 - `buscar_ticket` — detalhes completos de um ticket
 - `resumo_tickets` — contagem por status
+
+> As mesmas ferramentas também são expostas via **servidor MCP** (`src/mcp/server.ts`),
+> permitindo que o VS Code Copilot e o Claude Desktop as utilizem diretamente.
 
 **Exemplo de uso:**
 ```
@@ -135,6 +147,8 @@ Novo ticket: "Impressora não funciona no 3º andar"
 - Express 5.2.1
 - Prisma 7.8.0 + SQLite (via BetterSqlite3)
 - Anthropic SDK @anthropic-ai/sdk ^0.96.0
+- @modelcontextprotocol/sdk (servidor MCP)
+- Zod (validação de schemas MCP)
 - TypeScript
 - ts-node
 
@@ -183,6 +197,20 @@ if (textoResposta.includes("```")) {
 }
 ```
 
+### MCP (Model Context Protocol)
+As ferramentas de acesso ao banco foram expostas como um **servidor MCP standalone**
+(`src/mcp/server.ts`). Isso permite que qualquer host compatível — VS Code Copilot,
+Claude Desktop, Cursor — consulte o helpdesk diretamente, sem passar pela interface web.
+
+```
+VS Code Copilot
+    └── inicia: npx ts-node src/mcp/server.ts
+    └── envia via stdin:  { tool: "listar_tickets", input: { status: "aberto" } }
+    └── recebe via stdout: [ { id: 7, titulo: "Ambiente fora do ar", ... } ]
+```
+
+Configurado em `.vscode/mcp.json` — o VS Code inicia o processo automaticamente.
+
 ---
 
 ## 🐛 Bugs Resolvidos
@@ -224,7 +252,7 @@ npx prisma generate
 
 ## 📖 Próximos Passos Possíveis
 
-1. **MCP (Model Context Protocol)** — Expor ferramentas de forma padronizada
+1. ~~**MCP (Model Context Protocol)**~~ ✅ **Implementado**
 2. **RAG (Retrieval-Augmented Generation)** — Buscar em base de conhecimento
 3. **Multi-agent Orchestration** — Múltiplos agentes delegando tarefas
 4. **Human-in-the-loop** — Agente pedir confirmação antes de ações críticas
@@ -246,4 +274,4 @@ Projeto de aprendizado — uso livre para fins educacionais.
 ---
 
 **Última atualização:** Maio de 2026  
-**Status:** ✅ Agentes funcionando, CI/CD não configurado
+**Status:** ✅ Agentes funcionando | ✅ Servidor MCP ativo | CI/CD não configurado

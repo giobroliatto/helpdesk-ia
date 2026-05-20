@@ -187,6 +187,8 @@ backend/src/
 │   └── agenteInterativo.ts   ← agente de chat com tool use loop
 ├── tools/
 │   └── ticketTools.ts        ← funções de acesso ao banco + schemas das ferramentas
+├── mcp/
+│   └── server.ts             ← servidor MCP (expõe as mesmas tools via protocolo padrão)
 └── db/
     └── prisma.ts             ← instância do PrismaClient com driver adapter
 
@@ -202,3 +204,57 @@ frontend/src/app/
 └── pipes/
     └── label.pipe.ts         ← formata valores do banco para exibição ("media" → "Média")
 ```
+
+---
+
+## Servidor MCP (`src/mcp/server.ts`)
+
+Além dos agentes que rodam dentro do backend Express, o sistema também expõe as
+ferramentas de tickets via **MCP (Model Context Protocol)** — um protocolo aberto
+da Anthropic que permite que qualquer host de IA compatível utilize as tools.
+
+**O que é MCP:**
+É o "USB-C das integrações de IA". Em vez de cada app de IA ter sua integração
+customizada, você cria um servidor MCP uma vez e qualquer host (VS Code Copilot,
+Claude Desktop, Cursor) o consome com a mesma interface padrão.
+
+**Como funciona o transporte stdio:**
+```
+VS Code Copilot (host)
+    └── spawna processo: npx ts-node src/mcp/server.ts
+    └── comunica via stdin/stdout (JSON-RPC)
+    └── descobre automaticamente as 3 tools disponíveis
+```
+
+**Tools expostas:**
+
+| Tool | Schema | O que faz |
+|---|---|---|
+| `listar_tickets` | `{ status?, prioridade? }` | Lista tickets com filtros |
+| `buscar_ticket` | `{ id: number }` | Detalhe completo de um ticket |
+| `resumo_tickets` | `{}` | Contagem por status |
+
+**Diferença entre usar as tools via agente vs via MCP:**
+
+| Via Agente Interativo | Via Servidor MCP |
+|---|---|
+| Usuário digita no chat da app web | Usuário pergunta no VS Code / Claude Desktop |
+| O backend gerencia o tool use loop | O host (VS Code) gerencia o tool use loop |
+| Ferramentas acopladas ao agente | Ferramentas expostas de forma padronizada e reutilizável |
+
+**Configuração (`.vscode/mcp.json` na raiz do workspace):**
+```json
+{
+  "servers": {
+    "helpdesk-ia": {
+      "command": "npx",
+      "args": ["ts-node", "--project", "tsconfig.json", "src/mcp/server.ts"],
+      "cwd": "c:\\aulas-claude\\ia\\helpdesk\\backend"
+    }
+  }
+}
+```
+
+O VS Code inicia o processo automaticamente quando detecta o arquivo e o usuário
+confia no servidor. A partir daí, o Copilot pode consultar o banco em tempo real
+sem que a interface web esteja aberta.
