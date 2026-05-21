@@ -184,11 +184,14 @@ backend/src/
 │   └── chat.ts               ← endpoint do chat + carregamento de histórico
 ├── agents/
 │   ├── agenteAutomatico.ts   ← agente de auditoria (sem tool use, só prompt)
-│   └── agenteInterativo.ts   ← agente de chat com tool use loop
+│   └── agenteInterativo.ts   ← agente de chat com tool use loop + RAG
 ├── tools/
 │   └── ticketTools.ts        ← funções de acesso ao banco + schemas das ferramentas
 ├── mcp/
 │   └── server.ts             ← servidor MCP (expõe as mesmas tools via protocolo padrão)
+├── rag/
+│   ├── embeddings.ts         ← converte texto em vetor com modelo local
+│   └── buscar.ts             ← busca por similaridade de cosseno na BaseConhecimento
 └── db/
     └── prisma.ts             ← instância do PrismaClient com driver adapter
 
@@ -258,3 +261,94 @@ VS Code Copilot (host)
 O VS Code inicia o processo automaticamente quando detecta o arquivo e o usuário
 confia no servidor. A partir daí, o Copilot pode consultar o banco em tempo real
 sem que a interface web esteja aberta.
+
+---
+
+## RAG — Retrieval-Augmented Generation
+
+O agente interativo usa RAG para responder com **conhecimento real da empresa** em
+vez de depender apenas do treinamento genérico do Claude.
+
+**Problema sem RAG:**
+> Usuário: "como reseto minha senha?"
+> Claude: responde com procedimentos genéricos da internet, não os da empresa.
+
+**Problema com RAG:**
+> Claude: responde com o procedimento exato do portal `ti.empresa.com/reset`.
+
+### Como funciona o fluxo completo
+
+```
+Usuário: "minha VPN não está conectando"
+       │
+       ▼ [src/agents/agenteInterativo.ts]
+Chama buscarConhecimentoRelevante(mensagem)
+       │
+       ▼ [src/rag/embeddings.ts]
+Converte a pergunta num vetor de 384 números usando modelo local
+  Xenova/all-MiniLM-L6-v2  (roda no próprio Node.js, sem API externa)
+  Ex: "VPN não conecta" → [0.12, -0.34, 0.87, 0.05, ...] (384 valores)
+       │
+       ▼ [src/rag/buscar.ts]
+Carrega todos os artigos da tabela BaseConhecimento
+Calcula similaridade de cosseno entre a pergunta e cada artigo
+  Artigo mais similar: "VPN não conecta - troubleshooting" (score: 0.89)
+  Artigo 2º: "Acesso negado a sistema interno" (score: 0.41)
+  Artigo 3º: "Instalar ou atualizar software" (score: 0.28 ← abaixo do threshold)
+Filtra artigos acima do threshold (0.35), retorna top 3
+       │
+       ▼ [src/agents/agenteInterativo.ts]
+Injeta artigos no system prompt:
+  "CONHECIMENTO RELEVANTE DA BASE INTERNA:
+   ### VPN não conecta - troubleshooting
+   Quando a VPN não conecta: 1) Confirme que você tem conexão..."
+       │
+       ▼
+Claude recebe system prompt enriquecido e responde com os procedimentos reais
+```
+
+### O que é similaridade de cosseno
+
+Dois vetores são similares quando apontam na mesma direção no espaço vetorial.
+O modelo de embedding garante que frases com **significado próximo** geram vetores
+apontando na mesma direção, mesmo usando palavras diferentes:
+
+```
+"VPN não conecta"  ════╤════  similaridade alta  (mesma direção)
+"problema com VPN" ════╝
+
+"receita de bolo"  ════════════════════→  similaridade baixa (direções diferentes)
+```
+
+A fórmula: `cos(θ) = (A · B) / (|A| × |B|)` retorna um valor entre -1 e 1.
+Usamos threshold 0.35 — abaixo disso, o artigo não é relevante o suficiente.
+
+### Arquivos do RAG
+
+| Arquivo | Responsabilidade |
+|---|---|
+| `src/rag/embeddings.ts` | Converte texto → vetor (384 dimensões) |
+| `src/rag/buscar.ts` | Busca artigos por similaridade, filtra por threshold |
+| `scripts/popular-base-conhecimento.js` | Popula 10 artigos de TI com seus vetores |
+| Tabela `BaseConhecimento` | Armazena `titulo`, `conteudo`, `embedding` (JSON) |
+
+### Artigos na base de conhecimento
+
+1. Reset de senha - Active Directory
+2. Impressora offline - diagnóstico e solução
+3. VPN não conecta - troubleshooting
+4. E-mail não sincroniza no celular
+5. Computador lento - diagnóstico
+6. Acesso negado a sistema interno
+7. Áudio não funciona no Microsoft Teams
+8. Recuperar arquivo apagado ou perdido
+9. Monitor sem imagem ou sinal
+10. Instalar ou atualizar software
+
+### Para repopular a base
+
+```bash
+cd helpdesk/backend
+node scripts/popular-base-conhecimento.js
+# Na primeira execução: baixa modelo ~80MB (fica em cache após isso)
+```

@@ -103,9 +103,10 @@ Ou configure o `.vscode/mcp.json` (já incluído) e o VS Code inicia automaticam
 - **Arquivo**: `backend/src/agents/agenteInterativo.ts`
 - **Como usa**:
   1. Usuário faz pergunta
-  2. Agente recebe histórico limitado (8 mensagens)
-  3. Agente **chama ferramentas** para buscar dados frescos do banco
-  4. Agente responde com informação atualizada
+  2. Agente busca artigos relevantes via **RAG** na base de conhecimento
+  3. Agente recebe histórico limitado (8 mensagens)
+  4. Agente **chama ferramentas** para buscar dados frescos do banco
+  5. Agente responde combinando dados do banco + conhecimento interno da empresa
 
 **Ferramentas disponíveis:**
 - `listar_tickets` — lista tickets com filtros
@@ -117,9 +118,10 @@ Ou configure o `.vscode/mcp.json` (já incluído) e o VS Code inicia automaticam
 
 **Exemplo de uso:**
 ```
-Usuário: "Há algum ticket com prioridade crítica?"
-→ Agente chama listar_tickets(prioridade: "critica")
-→ Agente responde: "Sim, ticket #7: 'Sistema fora do ar'"
+Usuário: "minha VPN não está conectando"
+→ RAG encontra artigo: "VPN não conecta - troubleshooting" (similaridade 0.87)
+→ Artigo é injetado no system prompt
+→ Agente responde com os passos reais de troubleshooting da empresa
 ```
 
 ### Agente Automático (Triagem)
@@ -148,6 +150,7 @@ Novo ticket: "Impressora não funciona no 3º andar"
 - Prisma 7.8.0 + SQLite (via BetterSqlite3)
 - Anthropic SDK @anthropic-ai/sdk ^0.96.0
 - @modelcontextprotocol/sdk (servidor MCP)
+- @xenova/transformers (embeddings locais para RAG)
 - Zod (validação de schemas MCP)
 - TypeScript
 - ts-node
@@ -211,6 +214,32 @@ VS Code Copilot
 
 Configurado em `.vscode/mcp.json` — o VS Code inicia o processo automaticamente.
 
+### RAG (Retrieval-Augmented Generation)
+O agente interativo usa RAG para responder perguntas com **conhecimento real da empresa**
+em vez de depender apenas do treinamento do modelo.
+
+```
+Usuário: "como reseto minha senha?"
+       │
+       ▼
+Gera embedding da pergunta (vetor de 384 números)
+       │
+       ▼
+Busca artigos similares na BaseConhecimento (similaridade de cosseno)
+       │
+       ▼
+Artigo relevante injetado no system prompt antes de chamar o Claude
+       │
+       ▼
+Claude responde com os procedimentos reais internos da empresa
+```
+
+**Arquivos:**
+- `src/rag/embeddings.ts` — gera vetores com modelo local `Xenova/all-MiniLM-L6-v2`
+- `src/rag/buscar.ts` — busca por similaridade de cosseno, threshold 0.35, top 3
+- `scripts/popular-base-conhecimento.js` — popula 10 artigos de suporte de TI
+- Tabela `BaseConhecimento` no banco: `titulo`, `conteudo`, `embedding` (JSON)
+
 ---
 
 ## 🐛 Bugs Resolvidos
@@ -233,6 +262,13 @@ cd helpdesk/backend
 node scripts/limpar-chat.js
 ```
 
+**Popular base de conhecimento (RAG):**
+```bash
+cd helpdesk/backend
+node scripts/popular-base-conhecimento.js
+# Na primeira execução baixa o modelo (~80MB). Após isso fica em cache.
+```
+
 **Regenerar Prisma client:**
 ```bash
 cd helpdesk/backend
@@ -253,7 +289,7 @@ npx prisma generate
 ## 📖 Próximos Passos Possíveis
 
 1. ~~**MCP (Model Context Protocol)**~~ ✅ **Implementado**
-2. **RAG (Retrieval-Augmented Generation)** — Buscar em base de conhecimento
+2. ~~**RAG (Retrieval-Augmented Generation)**~~ ✅ **Implementado**
 3. **Multi-agent Orchestration** — Múltiplos agentes delegando tarefas
 4. **Human-in-the-loop** — Agente pedir confirmação antes de ações críticas
 5. **Streaming** — Respostas chegando token a token
@@ -274,4 +310,4 @@ Projeto de aprendizado — uso livre para fins educacionais.
 ---
 
 **Última atualização:** Maio de 2026  
-**Status:** ✅ Agentes funcionando | ✅ Servidor MCP ativo | CI/CD não configurado
+**Status:** ✅ Agentes funcionando | ✅ Servidor MCP ativo | ✅ RAG com base de conhecimento | CI/CD não configurado
