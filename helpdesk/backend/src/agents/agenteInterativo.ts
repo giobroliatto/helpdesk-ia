@@ -119,3 +119,100 @@ export async function agenteChatInterativo(
 
   return respostaFinal;
 }
+
+// ================================================================
+// AGENTE INTERATIVO (STREAMING) — envia chunks conforme o Claude gera
+//
+// Em vez de esperar a resposta completa, chama onChunk() para cada
+// pedaço de texto — o backend repassa via SSE para o frontend,
+// que vai construindo a mensagem letra por letra na tela.
+//
+// Fluxo:
+//   Tool use → executa normalmente (sem stream, é rápido)
+//   Resposta final → streama chunks via onChunk()
+// ================================================================
+export async function agenteChatInterativoStream(
+  ticketId: number | null,
+  mensagemUsuario: string,
+  historicoMensagens: Array<{ role: "user" | "assistant"; content: string }>,
+  onChunk: (chunk: string) => void
+): Promise<void> {
+
+  const messages: Anthropic.MessageParam[] = historicoMensagens.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }));
+
+  while (messages.length > 0 && messages[messages.length - 1].role === "user") {
+    messages.pop();
+  }
+
+  messages.push({ role: "user", content: mensagemUsuario });
+
+  const contextosRAG = await buscarConhecimentoRelevante(mensagemUsuario);
+  let systemPrompt = SYSTEM_INTERATIVO;
+  if (contextosRAG.length > 0) {
+    const contextosTexto = contextosRAG
+      .map((c) => `### ${c.titulo}\n${c.conteudo}`)
+      .join("\n\n");
+    systemPrompt += `\n\n---\nCONHECIMENTO RELEVANTE DA BASE INTERNA:\n${contextosTexto}\n---\nUse essas informações ao responder. Cite a fonte pelo título quando relevante.`;
+    console.log(`[RAG] ${contextosRAG.length} artigo(s) injetado(s): ${contextosRAG.map(c => c.titulo).join(', ')}`);
+  }
+
+  let respostaFinal = "";
+
+  // Loop: executa ferramentas normalmente (sem stream), streama apenas o texto final
+  while (true) {
+    const stream = client.messages.stream({
+      model: MODEL,
+      max_tokens: 500,
+      system: systemPrompt,
+      tools: ticketToolsSchema,
+      messages,
+    });
+
+    // Itera os eventos SSE brutos do stream — filtra os de texto
+    // (eventos de tool_use, metadata, etc. são ignorados aqui)
+    for await (const event of stream) {
+      if (
+        event.type === "content_block_delta" &&
+        event.delta.type === "text_delta"
+      ) {
+        onChunk(event.delta.text);
+        respostaFinal += event.delta.text;
+      }
+    }
+
+    const finalMsg = await stream.finalMessage();
+
+    // Se não há mais ferramentas a chamar, a resposta final está pronta
+    if (finalMsg.stop_reason !== "tool_use") break;
+
+    // Ferramentas: executa e continua o loop (sem streaming nessa parte)
+    messages.push({ role: "assistant", content: finalMsg.content });
+    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    for (const block of finalMsg.content) {
+      if (block.type !== "tool_use") continue;
+      const resultado = await executarTicketTool(
+        block.name,
+        block.input as Record<string, unknown>
+      );
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: block.id,
+        content: JSON.stringify(resultado),
+      });
+    }
+    messages.push({ role: "user", content: toolResults });
+    respostaFinal = ""; // próxima iteração vai gerar o texto final
+  }
+
+  if (!respostaFinal) respostaFinal = "Não consegui gerar uma resposta.";
+
+  await prisma.mensagemChat.createMany({
+    data: [
+      { ticketId, role: "user",      conteudo: mensagemUsuario },
+      { ticketId, role: "assistant", conteudo: respostaFinal  },
+    ],
+  });
+}

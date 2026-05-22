@@ -1,4 +1,4 @@
-import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, ViewChild, ElementRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -29,7 +29,9 @@ export class ChatComponent implements OnInit {
   texto = '';
   enviando = false;
 
-  constructor(private chatService: ChatService) {}
+  // NgZone é necessário porque fetch() nativo roda fora da detecção de mudanças do Angular.
+  // Sem ngZone.run(), os chunks chegam mas a tela não atualiza até o próximo evento do Angular.
+  constructor(private chatService: ChatService, private ngZone: NgZone) {}
 
   ngOnInit(): void {
     this.chatService.buscarHistorico().subscribe({
@@ -44,7 +46,7 @@ export class ChatComponent implements OnInit {
     this.texto = '';
     this.enviando = true;
 
-    // Adiciona a mensagem do usuário localmente (feedback imediato)
+    // Adiciona a mensagem do usuário
     this.mensagens.push({
       id: Date.now(),
       ticketId: null,
@@ -52,22 +54,42 @@ export class ChatComponent implements OnInit {
       conteudo: textoEnviado,
       criadoEm: new Date().toISOString()
     });
+
+    // Cria o balão do assistente vazio — será preenchido chunk por chunk
+    const streamingMsg: Mensagem = {
+      id: Date.now() + 1,
+      ticketId: null,
+      role: 'assistant',
+      conteudo: '',
+      criadoEm: new Date().toISOString()
+    };
+    this.mensagens.push(streamingMsg);
     this.scrollDown();
 
-    this.chatService.enviarMensagem(textoEnviado).subscribe({
-      next: ({ resposta }) => {
-        this.mensagens.push({
-          id: Date.now() + 1,
-          ticketId: null,
-          role: 'assistant',
-          conteudo: resposta,
-          criadoEm: new Date().toISOString()
+    this.chatService.enviarMensagemStream(
+      textoEnviado,
+      (chunk) => {
+        // ngZone.run() força o Angular a detectar a mudança e atualizar a tela
+        this.ngZone.run(() => {
+          streamingMsg.conteudo += chunk;
+          this.scrollDown();
         });
-        this.enviando = false;
-        this.scrollDown();
       },
-      error: () => { this.enviando = false; }
-    });
+      () => {
+        this.ngZone.run(() => {
+          this.enviando = false;
+          this.scrollDown();
+        });
+      },
+      () => {
+        this.ngZone.run(() => {
+          if (!streamingMsg.conteudo) {
+            streamingMsg.conteudo = 'Erro ao processar a mensagem.';
+          }
+          this.enviando = false;
+        });
+      }
+    );
   }
 
   onEnter(event: KeyboardEvent): void {

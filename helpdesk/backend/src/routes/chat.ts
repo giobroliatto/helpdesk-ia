@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import prisma from "../db/prisma";
-import { agenteChatInterativo } from "../agents/agenteInterativo";
+import { agenteChatInterativo, agenteChatInterativoStream } from "../agents/agenteInterativo";
 
 const router = Router();
 
@@ -39,6 +39,57 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     res.json({ resposta });
   } catch (err) {
     next(err);
+  }
+});
+
+// POST /chat/stream — versão SSE: a conexão HTTP fica aberta e chunks chegam conforme o Claude gera.
+// O frontend lê via fetch() + ReadableStream e vai exibindo o texto em tempo real.
+//
+// Formato dos eventos SSE:
+//   data: {"chunk": "pedaço de texto"}\n\n   ← texto parcial da resposta
+//   data: {"done": true}\n\n               ← sinaliza que terminou
+//   data: {"erro": "mensagem"}\n\n            ← erro durante o processamento
+router.post("/stream", async (req: Request, res: Response) => {
+  const { mensagem, ticketId } = req.body as {
+    mensagem: string;
+    ticketId?: number;
+  };
+
+  if (!mensagem?.trim()) {
+    res.status(400).json({ erro: "mensagem é obrigatória" });
+    return;
+  }
+
+  const historico = await prisma.mensagemChat.findMany({
+    where: { ticketId: ticketId ?? null },
+    orderBy: { criadoEm: "desc" },
+    take: 8,
+  });
+
+  const historicoFormatado = historico.reverse().map((m: { role: string; conteudo: string }) => ({
+    role: m.role as "user" | "assistant",
+    content: m.conteudo,
+  }));
+
+  // Headers SSE: mantém a conexão aberta para enviar eventos ao longo do tempo
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  try {
+    await agenteChatInterativoStream(
+      ticketId ?? null,
+      mensagem,
+      historicoFormatado,
+      (chunk) => {
+        res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+      }
+    );
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+  } catch (err) {
+    res.write(`data: ${JSON.stringify({ erro: "Erro interno ao processar mensagem" })}\n\n`);
+  } finally {
+    res.end();
   }
 });
 
