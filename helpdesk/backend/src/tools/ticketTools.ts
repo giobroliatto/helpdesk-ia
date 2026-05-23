@@ -42,6 +42,14 @@ export async function contarTicketsPorStatus() {
   return resultados.map((r: { status: string; _count: { id: number } }) => ({ status: r.status, total: r._count.id }));
 }
 
+export async function fecharTicket(id: number) {
+  const ticket = await prisma.ticket.update({
+    where: { id },
+    data: { status: "fechado" },
+  });
+  return ticket;
+}
+
 // Definição das ferramentas no formato que a Anthropic espera (schema)
 export const ticketToolsSchema = [
   {
@@ -83,6 +91,20 @@ export const ticketToolsSchema = [
       properties: {},
     },
   },
+  {
+    name: "fechar_ticket",
+    description:
+      "Fecha um ticket alterando seu status para 'fechado'. " +
+      "REGRA OBRIGATÓRIA: só chamar esta tool após o usuário confirmar EXPLICITAMENTE o fechamento. " +
+      "Antes de chamar, sempre use buscar_ticket para mostrar os detalhes do ticket e pedir confirmação.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "number", description: "ID numérico do ticket a fechar" },
+      },
+      required: ["id"],
+    },
+  },
 ];
 
 // Executor: recebe nome e input da tool, chama a função certa
@@ -97,6 +119,8 @@ export async function executarTicketTool(
       return buscarTicketPorId(input.id as number);
     case "resumo_tickets":
       return contarTicketsPorStatus();
+    case "fechar_ticket":
+      return fecharTicket(input.id as number);
     default:
       throw new Error(`Ferramenta desconhecida: ${nome}`);
   }
