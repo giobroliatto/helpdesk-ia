@@ -124,6 +124,7 @@ exatamente 2 blocos `tool_result`, um para cada ID.
 | `listar_tickets` | Lista tickets com filtros de status/prioridade | "mostra todos os tickets abertos" |
 | `buscar_ticket` | Busca um ticket pelo ID com mensagens | "o que tem no ticket #3?" |
 | `resumo_tickets` | Conta tickets por status | "quantos tickets tem em cada status?" |
+| `fechar_ticket` | Fecha um ticket (HITL: só após confirmação) | "fecha o ticket 7" → Claude pede confirmação antes |
 | `atualizar_ticket` | Atualiza campos de um ticket | não exposta no agente interativo |
 
 ---
@@ -236,6 +237,7 @@ VS Code Copilot (host)
 | `listar_tickets` | `{ status?, prioridade? }` | Lista tickets com filtros |
 | `buscar_ticket` | `{ id: number }` | Detalhe completo de um ticket |
 | `resumo_tickets` | `{}` | Contagem por status |
+| `fechar_ticket` | `{ id: number }` | Fecha um ticket (HITL via host) |
 
 **Diferença entre usar as tools via agente vs via MCP:**
 
@@ -426,3 +428,70 @@ os chunks chegam mas a tela não atualiza até o próximo evento interno do Angu
 | `src/routes/chat.ts` | Novo endpoint `POST /chat/stream` com headers SSE |
 | `src/app/services/chat.service.ts` | Método `enviarMensagemStream()` com `fetch` + `ReadableStream` |
 | `src/app/pages/chat/chat.component.ts` | `enviar()` cria balão vazio + preenche via chunks + `NgZone` |
+
+---
+
+## Human-in-the-Loop (HITL)
+
+O agente interativo pode fechar tickets, mas **nunca executa a ação sem confirmação
+explícita do usuário**. Esse padrão é o Human-in-the-Loop: o humano fica no loop de
+decisão antes de ações irreversíveis.
+
+### Por que é necessário
+
+Sem HITL, o agente poderia fechar tickets errados ou em massa sem chance de cancelar.
+Com HITL, o agente sempre para, mostra o que vai fazer, e espera confirmação.
+
+### Fluxo com HITL
+
+```
+Usuário: "fecha o ticket 7"
+       │
+       ▼  Claude usa buscar_ticket(7)
+Obtém: titulo="Impressora offline", status="aberto", prioridade="media"
+       │
+       ▼  Claude responde (SEM chamar fechar_ticket ainda)
+"Ticket #7: Impressora offline no 3º andar
+ Status atual: aberto | Prioridade: média
+ Confirma o fechamento?"
+       │
+       ▼  Usuário: "sim, confirmo"
+       │
+       ▼  SÓ AGORA Claude chama fechar_ticket(7)
+"Ticket #7 fechado com sucesso."
+```
+
+### Onde a regra está implementada
+
+A regra está em **dois lugares**, para máxima confiabilidade:
+
+**1. No `description` da tool (`ticketTools.ts`):**
+```
+"REGRA OBRIGATÓRIA: só chamar esta tool após o usuário confirmar
+EXPLICITAMENTE o fechamento."
+```
+
+**2. No `SYSTEM_INTERATIVO` (`agenteInterativo.ts`):**
+```
+"REGRA DE FECHAMENTO (HUMAN-IN-THE-LOOP): Antes de fechar qualquer ticket:
+1. Usar buscar_ticket para obter detalhes atuais
+2. Apresentar: título, status, prioridade e tempo em aberto
+3. Perguntar explicitamente se confirma o fechamento
+4. SÓ chamar fechar_ticket após confirmação clara do usuário"
+```
+
+### HITL no chat vs HITL via MCP
+
+| Via Chat (agente interativo) | Via MCP (VS Code Copilot) |
+|---|---|
+| HITL garantido pelo system prompt + description | HITL é responsabilidade do host |
+| Claude pede confirmação por instruição | O Copilot pergunta antes de invocar a tool |
+| Comportamental — instrui o modelo | Estrutural — o host controla o fluxo |
+
+### Arquivos modificados
+
+| Arquivo | Mudança |
+|---|---|
+| `src/tools/ticketTools.ts` | Função `fecharTicket()`, schema `fechar_ticket`, `case` no switch |
+| `src/agents/agenteInterativo.ts` | Regra HITL no `SYSTEM_INTERATIVO` |
+| `src/mcp/server.ts` | Tool `fechar_ticket` exposta via MCP |

@@ -112,6 +112,7 @@ Ou configure o `.vscode/mcp.json` (já incluído) e o VS Code inicia automaticam
 - `listar_tickets` — lista tickets com filtros
 - `buscar_ticket` — detalhes completos de um ticket
 - `resumo_tickets` — contagem por status
+- `fechar_ticket` — fecha um ticket (com HITL: só após confirmação do usuário)
 
 > As mesmas ferramentas também são expostas via **servidor MCP** (`src/mcp/server.ts`),
 > permitindo que o VS Code Copilot e o Claude Desktop as utilizem diretamente.
@@ -259,6 +260,32 @@ Backend                           Frontend
 - Service: `fetch()` nativo com `ReadableStream` (não `HttpClient` — que não suporta SSE)
 - Component: `NgZone.run()` força Angular a detectar mudanças fora do Zone.js
 
+### Human-in-the-Loop (HITL)
+O agente interativo pode **fechar tickets**, mas nunca age sem confirmação explícita do
+usuário. A regra está em dois lugares para máxima confiabilidade: no `description` da
+tool e no `SYSTEM_INTERATIVO`.
+
+```
+Usuário: "fecha o ticket 7"
+       │
+       ▼  Claude usa buscar_ticket(7) primeiro
+"Ticket #7: Impressora offline no 3º andar
+ Status: aberto | Prioridade: média
+ Confirma o fechamento?"
+       │
+       ▼  Usuário: "sim, pode fechar"
+       │
+       ▼  SÓ AGORA Claude chama fechar_ticket(7)
+"Ticket #7 fechado com sucesso."
+```
+
+**Dois níveis de HITL:**
+- `description` da tool: instrui o modelo diretamente no schema
+- `SYSTEM_INTERATIVO`: regra explícita com os 4 passos obrigatórios
+
+**A tool `fechar_ticket` também está no servidor MCP** — o host (VS Code Copilot) fica
+responsável pelo HITL ao usar via MCP.
+
 ---
 
 ## 🐛 Bugs Resolvidos
@@ -310,8 +337,8 @@ npx prisma generate
 1. ~~**MCP (Model Context Protocol)**~~ ✅ **Implementado**
 2. ~~**RAG (Retrieval-Augmented Generation)**~~ ✅ **Implementado**
 3. ~~**Streaming**~~ ✅ **Implementado**
-4. **Multi-agent Orchestration** — Múltiplos agentes delegando tarefas
-5. **Human-in-the-loop** — Agente pedir confirmação antes de ações críticas
+4. ~~**Human-in-the-loop**~~ ✅ **Implementado**
+5. **Multi-agent Orchestration** — Múltiplos agentes delegando tarefas
 
 ---
 
@@ -329,4 +356,4 @@ Projeto de aprendizado — uso livre para fins educacionais.
 ---
 
 **Última atualização:** Maio de 2026  
-**Status:** ✅ Agentes funcionando | ✅ Servidor MCP ativo | ✅ RAG com base de conhecimento | ✅ Streaming SSE | CI/CD não configurado
+**Status:** ✅ Agentes funcionando | ✅ Servidor MCP ativo | ✅ RAG com base de conhecimento | ✅ Streaming SSE | ✅ Human-in-the-loop | CI/CD não configurado

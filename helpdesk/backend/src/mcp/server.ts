@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { listarTickets, buscarTicketPorId, contarTicketsPorStatus } from "../tools/ticketTools";
+import { listarTickets, buscarTicketPorId, contarTicketsPorStatus, fecharTicket } from "../tools/ticketTools";
 
 // ================================================================
 // SERVIDOR MCP DO HELPDESK
@@ -74,6 +74,25 @@ server.tool(
     const resumo = await contarTicketsPorStatus();
     return {
       content: [{ type: "text", text: JSON.stringify(resumo, null, 2) }],
+    };
+  }
+);
+
+// -----------------------------------------------------------------
+// TOOL: fechar_ticket
+// HITL: o host (VS Code Copilot) é responsável por pedir confirmação
+// antes de invocar esta tool — ela executa o fechamento diretamente.
+// -----------------------------------------------------------------
+server.tool(
+  "fechar_ticket",
+  "Fecha um ticket alterando seu status para 'fechado'. Usar apenas após confirmação explícita do usuário.",
+  {
+    id: z.number().describe("ID numérico do ticket a fechar"),
+  },
+  async ({ id }) => {
+    const ticket = await fecharTicket(id);
+    return {
+      content: [{ type: "text", text: `Ticket #${id} fechado com sucesso.\n${JSON.stringify(ticket, null, 2)}` }],
     };
   }
 );
