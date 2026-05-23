@@ -106,7 +106,7 @@ Ou configure o `.vscode/mcp.json` (já incluído) e o VS Code inicia automaticam
   2. Agente busca artigos relevantes via **RAG** na base de conhecimento
   3. Agente recebe histórico limitado (8 mensagens)
   4. Agente **chama ferramentas** para buscar dados frescos do banco
-  5. Agente responde combinando dados do banco + conhecimento interno da empresa
+  5. Resposta chega em **streaming** — texto aparece progressivamente na tela
 
 **Ferramentas disponíveis:**
 - `listar_tickets` — lista tickets com filtros
@@ -121,7 +121,7 @@ Ou configure o `.vscode/mcp.json` (já incluído) e o VS Code inicia automaticam
 Usuário: "minha VPN não está conectando"
 → RAG encontra artigo: "VPN não conecta - troubleshooting" (similaridade 0.87)
 → Artigo é injetado no system prompt
-→ Agente responde com os passos reais de troubleshooting da empresa
+→ Resposta chega em streaming — texto aparece conforme o Claude gera
 ```
 
 ### Agente Automático (Triagem)
@@ -240,6 +240,25 @@ Claude responde com os procedimentos reais internos da empresa
 - `scripts/popular-base-conhecimento.js` — popula 10 artigos de suporte de TI
 - Tabela `BaseConhecimento` no banco: `titulo`, `conteudo`, `embedding` (JSON)
 
+### Streaming (SSE — Server-Sent Events)
+As respostas do chat chegam **progressivamente** enquanto o Claude gera — sem esperar
+do início ao fim. O balão do assistente aparece vazio e vai sendo preenchido token a token.
+
+```
+Backend                           Frontend
+   │                                │
+   ├─ data: {"chunk": "Para "}\n\n → balão começa a aparecer
+   ├─ data: {"chunk": "resolver"}   → texto cresce
+   ├─ data: {"chunk": " isso..."}   → texto cresce
+   └─ data: {"done": true}          → enviando = false
+```
+
+**Implementação:**
+- Backend: `POST /chat/stream` com headers SSE (`Content-Type: text/event-stream`)
+- Agente: `agenteChatInterativoStream()` itera eventos `content_block_delta` da API
+- Service: `fetch()` nativo com `ReadableStream` (não `HttpClient` — que não suporta SSE)
+- Component: `NgZone.run()` força Angular a detectar mudanças fora do Zone.js
+
 ---
 
 ## 🐛 Bugs Resolvidos
@@ -290,9 +309,9 @@ npx prisma generate
 
 1. ~~**MCP (Model Context Protocol)**~~ ✅ **Implementado**
 2. ~~**RAG (Retrieval-Augmented Generation)**~~ ✅ **Implementado**
-3. **Multi-agent Orchestration** — Múltiplos agentes delegando tarefas
-4. **Human-in-the-loop** — Agente pedir confirmação antes de ações críticas
-5. **Streaming** — Respostas chegando token a token
+3. ~~**Streaming**~~ ✅ **Implementado**
+4. **Multi-agent Orchestration** — Múltiplos agentes delegando tarefas
+5. **Human-in-the-loop** — Agente pedir confirmação antes de ações críticas
 
 ---
 
@@ -310,4 +329,4 @@ Projeto de aprendizado — uso livre para fins educacionais.
 ---
 
 **Última atualização:** Maio de 2026  
-**Status:** ✅ Agentes funcionando | ✅ Servidor MCP ativo | ✅ RAG com base de conhecimento | CI/CD não configurado
+**Status:** ✅ Agentes funcionando | ✅ Servidor MCP ativo | ✅ RAG com base de conhecimento | ✅ Streaming SSE | CI/CD não configurado

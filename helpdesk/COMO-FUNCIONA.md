@@ -181,10 +181,10 @@ backend/src/
 ├── index.ts                  ← servidor Express, dotenv, CORS, error handler
 ├── routes/
 │   ├── tickets.ts            ← CRUD de tickets + disparo do agente automático
-│   └── chat.ts               ← endpoint do chat + carregamento de histórico
+│   └── chat.ts               ← endpoint do chat + endpoint SSE de streaming
 ├── agents/
 │   ├── agenteAutomatico.ts   ← agente de auditoria (sem tool use, só prompt)
-│   └── agenteInterativo.ts   ← agente de chat com tool use loop + RAG
+│   └── agenteInterativo.ts   ← agente de chat com tool use loop + RAG + streaming
 ├── tools/
 │   └── ticketTools.ts        ← funções de acesso ao banco + schemas das ferramentas
 ├── mcp/
@@ -352,3 +352,77 @@ cd helpdesk/backend
 node scripts/popular-base-conhecimento.js
 # Na primeira execução: baixa modelo ~80MB (fica em cache após isso)
 ```
+
+---
+
+## Streaming — Server-Sent Events (SSE)
+
+As respostas do chat chegam **progressivamente** enquanto o Claude gera, em vez de
+esperar o texto completo antes de exibir. O balão do assistente aparece vazio
+imediatamente e vai sendo preenchido token a token.
+
+**Por que isso importa:**
+Sem streaming, o usuário vê uma tela parada por 2–6 segundos. Com streaming, a resposta
+costuma aparecer em menos de 200ms — mesmo que o texto completo ainda esteja sendo gerado.
+
+### Como funciona o fluxo completo
+
+```
+Usuário clica "Enviar"
+       │
+       ▼ [chat.component.ts]
+Cria balão do assistente vazio na tela (feedback imediato)
+Chama chatService.enviarMensagemStream()
+       │
+       ▼ [chat.service.ts] — fetch() nativo com ReadableStream
+POST /chat/stream (conexão HTTP permanece aberta)
+       │
+       ▼ [routes/chat.ts] — endpoint SSE
+Seta headers: Content-Type: text/event-stream, Cache-Control: no-cache
+Chama agenteChatInterativoStream(mensagem, onChunk)
+       │
+       ▼ [agents/agenteInterativo.ts]
+RAG: busca conhecimento relevante
+Loop de tool use: executa ferramentas normalmente (síncrono)
+Resposta final: usa client.messages.stream() da API Anthropic
+       │
+       ▼ A cada evento content_block_delta recebido da API:
+onChunk("Para ")    → res.write('data: {"chunk":"Para "}\n\n')
+onChunk("resolver") → res.write('data: {"chunk":"resolver"}\n\n')
+onChunk(" isso...") → res.write('data: {"chunk":" isso..."}\n\n')
+       │
+       ▼ [chat.service.ts] — ReadableStream lendo em tempo real
+Decodifica bytes → split por \n → parseia JSON → chama onChunk()
+       │
+       ▼ [chat.component.ts]
+ngZone.run(() => streamingMsg.conteudo += chunk)  ← Angular detecta e atualiza a tela
+       │
+       ▼ Quando o Claude termina:
+Backend envia: data: {"done": true}\n\n  +  res.end()
+Frontend: enviando = false
+```
+
+### Por que fetch nativo em vez de HttpClient
+
+O `HttpClient` do Angular espera a resposta HTTP completa antes de emitir. SSE precisa
+de acesso ao `ReadableStream` do corpo da resposta — só disponível via `fetch` nativo.
+
+### Por que EventSource não funciona aqui
+
+`EventSource` é a API padrão de SSE no navegador, mas só suporta **GET**. Nossa
+rota é **POST** (precisa enviar a mensagem no body). Por isso usamos `fetch`.
+
+### Por que NgZone.run() é necessário
+
+O Angular usa Zone.js para detectar eventos e atualizar a tela. Callbacks de
+`fetch().then()` e `reader.read()` rodam **fora** da zona do Angular. Sem `NgZone.run()`,
+os chunks chegam mas a tela não atualiza até o próximo evento interno do Angular.
+
+### Arquivos modificados
+
+| Arquivo | Mudança |
+|---|---|
+| `src/agents/agenteInterativo.ts` | Nova função `agenteChatInterativoStream()` com `client.messages.stream()` |
+| `src/routes/chat.ts` | Novo endpoint `POST /chat/stream` com headers SSE |
+| `src/app/services/chat.service.ts` | Método `enviarMensagemStream()` com `fetch` + `ReadableStream` |
+| `src/app/pages/chat/chat.component.ts` | `enviar()` cria balão vazio + preenche via chunks + `NgZone` |
