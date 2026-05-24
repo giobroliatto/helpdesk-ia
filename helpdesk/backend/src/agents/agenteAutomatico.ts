@@ -5,24 +5,77 @@ import { buscarConhecimentoRelevante } from "../rag/buscar";
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-sonnet-4-5";
 
+// ================================================================
+// PROMPT ENGINEERING — Few-Shot + Chain of Thought
+//
+// Few-Shot: 4 exemplos reais calibram o modelo nos casos limítrofes
+//   (especialmente media vs alta, que são os mais ambíguos)
+//
+// Chain of Thought: o campo "raciocinio" força o modelo a pensar em
+//   voz alta ANTES de decidir a prioridade. Isso reduz erros de
+//   classificação e torna cada decisão auditável no banco.
+//   Ordem importa: raciocinio vem primeiro no JSON para que o modelo
+//   "escreva o pensamento" antes de comprometer com uma prioridade.
+// ================================================================
 const SYSTEM_AUDITOR = `Você é um auditor automático de tickets de suporte.
-Quando um novo ticket chega, você analisa o conteúdo e define:
-1. PRIORIDADE: baixa | media | alta | critica
-2. CATEGORIA: ti | rh | financeiro | geral
-3. SUGESTAO: uma sugestão concisa de como resolver (máximo 2 frases)
 
-Responda SEMPRE neste formato JSON exato, sem texto adicional:
+Analise cada ticket e responda SEMPRE neste formato JSON exato, sem texto adicional:
 {
-  "prioridade": "...",
-  "categoria": "...",
-  "sugestao": "..."
+  "raciocinio": "raciocínio passo a passo: quem é afetado, existe workaround, é processo crítico de negócio?",
+  "prioridade": "baixa | media | alta | critica",
+  "categoria": "ti | rh | financeiro | geral",
+  "sugestao": "sugestão concisa de resolução (máximo 2 frases)"
 }
 
 Critérios de prioridade:
 - critica: sistema fora do ar, perda de dados, bloqueio total de trabalho
 - alta: afeta múltiplos usuários ou processo crítico de negócio
 - media: afeta um usuário, mas tem workaround
-- baixa: dúvida, melhoria ou solicitação não urgente`;
+- baixa: dúvida, melhoria ou solicitação não urgente
+
+--- EXEMPLOS ---
+
+Ticket: "Servidor de produção fora do ar"
+Descrição: "Sistema ERP inacessível. Ninguém consegue emitir nota fiscal ou acessar pedidos. Empresa parada há 30 minutos."
+Resposta:
+{
+  "raciocinio": "Afeta toda a empresa. Processo crítico de negócio (ERP, nota fiscal). Sem workaround possível. Bloqueio total de trabalho com impacto financeiro imediato.",
+  "prioridade": "critica",
+  "categoria": "ti",
+  "sugestao": "Acionar imediatamente o time de infraestrutura e verificar logs do servidor. Notificar gestores sobre o impacto."
+}
+
+Ticket: "Sistema de ponto eletrônico não registra"
+Descrição: "O relógio de ponto parou de funcionar. 80 funcionários não conseguem bater o ponto. O turno começa em 1 hora."
+Resposta:
+{
+  "raciocinio": "Afeta múltiplos usuários (80 funcionários). Processo de RH crítico com prazo urgente (1 hora). Sem workaround prático para 80 pessoas.",
+  "prioridade": "alta",
+  "categoria": "rh",
+  "sugestao": "Reiniciar o serviço do ponto eletrônico e verificar conectividade com o servidor de RH. Como contingência, registrar ponto manual com supervisão."
+}
+
+Ticket: "Excel travando ao abrir planilha grande"
+Descrição: "Minha planilha de controle mensal com 50 mil linhas fica travando. Consigo trabalhar em partes menores como workaround."
+Resposta:
+{
+  "raciocinio": "Afeta apenas 1 usuário. Existe workaround funcional (trabalhar em partes menores). Não é processo crítico de negócio. Impacto é na produtividade, não no bloqueio.",
+  "prioridade": "media",
+  "categoria": "ti",
+  "sugestao": "Dividir a planilha em arquivos menores ou usar filtros para carregar apenas o período necessário. Verificar se há atualizações pendentes do Office."
+}
+
+Ticket: "Solicitar troca de mouse para modelo ergonômico"
+Descrição: "Meu mouse atual funciona bem, mas gostaria de trocar por um modelo ergonômico para maior conforto no dia a dia."
+Resposta:
+{
+  "raciocinio": "Não é um problema, é uma solicitação de melhoria de conforto. Nenhum bloqueio ao trabalho. O equipamento atual funciona normalmente.",
+  "prioridade": "baixa",
+  "categoria": "ti",
+  "sugestao": "Abrir solicitação de compra via setor de TI com justificativa de ergonomia. Aprovação sujeita a disponibilidade de orçamento."
+}
+
+--- FIM DOS EXEMPLOS ---`;
 
 // ================================================================
 // AGENTE AUTOMÁTICO — dispara sozinho quando um ticket é criado
@@ -67,7 +120,7 @@ Descrição: ${ticket.descricao}`;
   try {
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 200,
+      max_tokens: 600,  // CoT precisa de mais tokens que o JSON puro
       system: SYSTEM_AUDITOR,
       messages: [{ role: "user", content: promptComRAG }],
     });
@@ -94,12 +147,13 @@ Descrição: ${ticket.descricao}`;
 
     // Parse do JSON retornado pelo modelo
     const analise = JSON.parse(textoResposta) as {
+      raciocinio: string;
       prioridade: string;
       categoria: string;
       sugestao: string;
     };
 
-    if (!analise.prioridade || !analise.categoria || !analise.sugestao) {
+    if (!analise.raciocinio || !analise.prioridade || !analise.categoria || !analise.sugestao) {
       throw new Error(`JSON incompleto: ${JSON.stringify(analise)}`);
     }
 
@@ -110,6 +164,7 @@ Descrição: ${ticket.descricao}`;
         prioridade: analise.prioridade,
         categoria: analise.categoria,
         sugestaoIA: analise.sugestao,
+        raciocinioIA: analise.raciocinio,
         status: "aberto", // volta para aberto após análise (pronto para atendente)
       },
     });

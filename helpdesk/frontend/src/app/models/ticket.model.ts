@@ -6,6 +6,7 @@ export interface Ticket {
   prioridade: 'baixa' | 'media' | 'alta' | 'critica';
   categoria: string;
   sugestaoIA: string | null;
+  raciocinioIA: string | null;
   criadoEm: string;
   atualizadoEm: string;
   comentarios?: ComentarioTicket[];

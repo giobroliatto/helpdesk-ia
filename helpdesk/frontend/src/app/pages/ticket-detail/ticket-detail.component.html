@@ -52,6 +52,10 @@
           </div>
           <div *ngIf="ticket.status !== 'em_analise' && ticket.sugestaoIA" class="suggestion">
             <p>{{ ticket.sugestaoIA }}</p>
+            <details *ngIf="ticket.raciocinioIA" class="raciocinio">
+              <summary>Ver raciocínio do agente</summary>
+              <p>{{ ticket.raciocinioIA }}</p>
+            </details>
           </div>
           <div *ngIf="ticket.status !== 'em_analise' && !ticket.sugestaoIA" class="no-suggestion">
             <mat-icon>help_outline</mat-icon>

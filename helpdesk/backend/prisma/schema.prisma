@@ -18,6 +18,7 @@ model Ticket {
   prioridade   String   @default("media")
   categoria    String   @default("geral")
   sugestaoIA   String?
+  raciocinioIA String?
   criadoEm    DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
