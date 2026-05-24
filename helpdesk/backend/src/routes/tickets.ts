@@ -68,7 +68,11 @@ router.post("/:id/comentarios", async (req: Request, res: Response, next: NextFu
 // POST /tickets — cria um novo ticket e dispara o agente automático
 router.post("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { titulo, descricao } = req.body as { titulo: string; descricao: string };
+    const { titulo, descricao, comRaciocinio } = req.body as {
+      titulo: string;
+      descricao: string;
+      comRaciocinio?: boolean;
+    };
 
     if (!titulo?.trim() || !descricao?.trim()) {
       res.status(400).json({ erro: "titulo e descricao são obrigatórios" });
@@ -80,8 +84,8 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     });
 
     // Dispara o agente automático de forma assíncrona (não bloqueia a resposta HTTP)
-    // Analogia: o ticket foi criado, o "auditor automático" começa a trabalhar em background
-    agenteAuditarTicket(ticket.id).catch((err) =>
+    // comRaciocinio === true ativa CoT + Few-Shot (~600 tokens); false usa modo simples (~200 tokens)
+    agenteAuditarTicket(ticket.id, comRaciocinio === true).catch((err) =>
       console.error("[ROTA] Erro no agente automático:", err)
     );
 

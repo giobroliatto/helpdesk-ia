@@ -8,6 +8,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { TicketService } from '../../services/ticket.service';
 
 @Component({
@@ -15,7 +16,8 @@ import { TicketService } from '../../services/ticket.service';
   standalone: true,
   imports: [
     CommonModule, FormsModule, MatCardModule, MatFormFieldModule,
-    MatInputModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule
+    MatInputModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule,
+    MatCheckboxModule
   ],
   templateUrl: './ticket-create.component.html',
   styleUrl: './ticket-create.component.scss'
@@ -23,6 +25,7 @@ import { TicketService } from '../../services/ticket.service';
 export class TicketCreateComponent {
   titulo = '';
   descricao = '';
+  comRaciocinio = false;
   enviando = false;
   sucesso = false;
   ticketCriadoId: number | null = null;
@@ -33,7 +36,7 @@ export class TicketCreateComponent {
     if (!this.titulo.trim() || !this.descricao.trim()) return;
 
     this.enviando = true;
-    this.ticketService.criar({ titulo: this.titulo, descricao: this.descricao }).subscribe({
+    this.ticketService.criar({ titulo: this.titulo, descricao: this.descricao, comRaciocinio: this.comRaciocinio }).subscribe({
       next: (ticket) => {
         this.enviando = false;
         this.sucesso = true;

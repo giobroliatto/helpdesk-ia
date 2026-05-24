@@ -6,18 +6,37 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-sonnet-4-5";
 
 // ================================================================
-// PROMPT ENGINEERING — Few-Shot + Chain of Thought
+// PROMPT ENGINEERING — duas variantes de análise
 //
-// Few-Shot: 4 exemplos reais calibram o modelo nos casos limítrofes
-//   (especialmente media vs alta, que são os mais ambíguos)
+// SIMPLES (padrão): sem exemplos, sem raciocínio explícito.
+//   Custo: ~200 tokens de saída. Rápido e econômico.
 //
-// Chain of Thought: o campo "raciocinio" força o modelo a pensar em
-//   voz alta ANTES de decidir a prioridade. Isso reduz erros de
-//   classificação e torna cada decisão auditável no banco.
-//   Ordem importa: raciocinio vem primeiro no JSON para que o modelo
-//   "escreva o pensamento" antes de comprometer com uma prioridade.
+// COT — Chain of Thought + Few-Shot (opt-in pelo usuário):
+//   Few-Shot: 4 exemplos calibram o modelo nos casos limítrofes.
+//   CoT: campo "raciocinio" força o modelo a pensar em voz alta ANTES
+//   de decidir — reduz erros e torna a decisão auditável no banco.
+//   Custo: ~600 tokens de saída (3× maior). Use com consciência.
 // ================================================================
-const SYSTEM_AUDITOR = `Você é um auditor automático de tickets de suporte.
+const SYSTEM_AUDITOR_SIMPLES = `Você é um auditor automático de tickets de suporte.
+Quando um novo ticket chega, você analisa o conteúdo e define:
+1. PRIORIDADE: baixa | media | alta | critica
+2. CATEGORIA: ti | rh | financeiro | geral
+3. SUGESTAO: uma sugestão concisa de como resolver (máximo 2 frases)
+
+Responda SEMPRE neste formato JSON exato, sem texto adicional:
+{
+  "prioridade": "...",
+  "categoria": "...",
+  "sugestao": "..."
+}
+
+Critérios de prioridade:
+- critica: sistema fora do ar, perda de dados, bloqueio total de trabalho
+- alta: afeta múltiplos usuários ou processo crítico de negócio
+- media: afeta um usuário, mas tem workaround
+- baixa: dúvida, melhoria ou solicitação não urgente`;
+
+const SYSTEM_AUDITOR_COT = `Você é um auditor automático de tickets de suporte.
 
 Analise cada ticket e responda SEMPRE neste formato JSON exato, sem texto adicional:
 {
@@ -81,7 +100,7 @@ Resposta:
 // AGENTE AUTOMÁTICO — dispara sozinho quando um ticket é criado
 // Não há interação humana, ele analisa e persiste resultado no banco
 // ================================================================
-export async function agenteAuditarTicket(ticketId: number): Promise<void> {
+export async function agenteAuditarTicket(ticketId: number, comRaciocinio = false): Promise<void> {
   const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
 
   if (!ticket) {
@@ -120,8 +139,8 @@ Descrição: ${ticket.descricao}`;
   try {
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 600,  // CoT precisa de mais tokens que o JSON puro
-      system: SYSTEM_AUDITOR,
+      max_tokens: comRaciocinio ? 600 : 200,
+      system: comRaciocinio ? SYSTEM_AUDITOR_COT : SYSTEM_AUDITOR_SIMPLES,
       messages: [{ role: "user", content: promptComRAG }],
     });
 
@@ -145,16 +164,19 @@ Descrição: ${ticket.descricao}`;
 
     console.log(`[AGENTE AUTO] JSON extraído: ${textoResposta}`);
 
-    // Parse do JSON retornado pelo modelo
+    // Parse do JSON — estrutura varia conforme o modo
     const analise = JSON.parse(textoResposta) as {
-      raciocinio: string;
+      raciocinio?: string;
       prioridade: string;
       categoria: string;
       sugestao: string;
     };
 
-    if (!analise.raciocinio || !analise.prioridade || !analise.categoria || !analise.sugestao) {
+    if (!analise.prioridade || !analise.categoria || !analise.sugestao) {
       throw new Error(`JSON incompleto: ${JSON.stringify(analise)}`);
+    }
+    if (comRaciocinio && !analise.raciocinio) {
+      throw new Error(`JSON sem raciocinio no modo CoT: ${JSON.stringify(analise)}`);
     }
 
     // Persiste a análise no banco — isso é o agente "agindo no mundo real"
@@ -164,7 +186,7 @@ Descrição: ${ticket.descricao}`;
         prioridade: analise.prioridade,
         categoria: analise.categoria,
         sugestaoIA: analise.sugestao,
-        raciocinioIA: analise.raciocinio,
+        raciocinioIA: analise.raciocinio ?? null,  // null quando modo simples
         status: "aberto", // volta para aberto após análise (pronto para atendente)
       },
     });

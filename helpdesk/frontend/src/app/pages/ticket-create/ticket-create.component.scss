@@ -13,6 +13,11 @@ mat-card-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 
   mat-icon { color: #1976d2; margin-top: 2px; flex-shrink: 0; }
 }
 
+.raciocinio-check {
+  display: block; margin-top: 12px; font-size: 14px;
+  .token-hint { font-size: 11px; color: #9e9e9e; margin-left: 4px; }
+}
+
 .success-box {
   text-align: center; padding: 32px 0;
   mat-icon { font-size: 56px; width: 56px; height: 56px; color: #4caf50; }

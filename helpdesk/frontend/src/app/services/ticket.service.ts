@@ -17,7 +17,7 @@ export class TicketService {
     return this.http.get<Ticket>(`${this.baseUrl}/${id}`);
   }
 
-  criar(dados: { titulo: string; descricao: string }): Observable<Ticket> {
+  criar(dados: { titulo: string; descricao: string; comRaciocinio: boolean }): Observable<Ticket> {
     return this.http.post<Ticket>(this.baseUrl, dados);
   }
 
