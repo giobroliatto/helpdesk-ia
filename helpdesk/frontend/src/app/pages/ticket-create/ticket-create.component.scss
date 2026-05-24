@@ -18,6 +18,8 @@ mat-card-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 
   .token-hint { font-size: 11px; color: #9e9e9e; margin-left: 4px; }
 }
 
+::ng-deep .full-width textarea { resize: vertical; min-height: 120px; }
+
 .success-box {
   text-align: center; padding: 32px 0;
   mat-icon { font-size: 56px; width: 56px; height: 56px; color: #4caf50; }

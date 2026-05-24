@@ -135,5 +135,5 @@ mat-card-header {
 .input-field {
   flex: 1;
   margin-bottom: -1.25em;
-  textarea { resize: none; }
+  textarea { resize: vertical; min-height: 40px; max-height: 200px; }
 }
