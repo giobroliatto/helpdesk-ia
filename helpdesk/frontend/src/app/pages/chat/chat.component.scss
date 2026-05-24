@@ -76,12 +76,35 @@ mat-card-header {
     &.badge-interativo { background: #e3f2fd; color: #1565c0; }
   }
 
+  &.assistant .bubble-container { max-width: 90%; }
+
   .bubble {
     padding: 10px 14px;
     border-radius: 16px;
     line-height: 1.5;
     font-size: 14px;
-    white-space: pre-wrap;
+    overflow-x: auto;
+
+    ::ng-deep {
+      p    { margin: 2px 0; }
+      h1, h2, h3 { margin: 6px 0 2px; font-weight: 600; }
+      h2   { font-size: 15px; }
+      h3   { font-size: 14px; }
+      ul, ol { padding-left: 20px; margin: 4px 0; }
+      code { background: rgba(0,0,0,.07); border-radius: 3px; padding: 1px 4px; font-size: 12px; }
+      pre  { background: rgba(0,0,0,.07); border-radius: 6px; padding: 8px 12px; overflow-x: auto; font-size: 12px;
+             code { background: none; padding: 0; } }
+
+      table {
+        border-collapse: collapse;
+        min-width: 100%;
+        font-size: 13px;
+        margin: 6px 0;
+        th, td { border: 1px solid rgba(0,0,0,.15); padding: 5px 10px; text-align: left; white-space: nowrap; }
+        thead  { background: rgba(0,0,0,.06); font-weight: 600; }
+        tr:nth-child(even) { background: rgba(0,0,0,.03); }
+      }
+    }
   }
 
   &.user {

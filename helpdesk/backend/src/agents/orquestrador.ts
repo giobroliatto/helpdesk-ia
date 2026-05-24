@@ -5,7 +5,7 @@ import { agenteRelatorioStream } from "./agenteRelatorios";
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-sonnet-4-5";
 
-export type AgenteRoteado = "interativo" | "relatorio";
+export type AgenteRoteado = "interativo" | "relatorio" | "ambos";
 
 // ================================================================
 // ORQUESTRADOR — camada de roteamento entre agentes especializados
@@ -22,10 +22,11 @@ export type AgenteRoteado = "interativo" | "relatorio";
 // System prompt minimalista — só classifica, não responde ao usuário
 const SYSTEM_CLASSIFICADOR = `Você é um roteador de intenções de um sistema de helpdesk.
 Classifique a mensagem do usuário e responda APENAS com uma palavra:
-- "relatorio" — se a mensagem é sobre: análise de dados, estatísticas, quantidades, volumes, tendências, SLA, distribuição, relatórios, dashboards ou qualquer consulta analítica/gerencial
-- "interativo" — se a mensagem é sobre: um ticket específico, listar tickets, alterar status ou prioridade, adicionar comentário, ou qualquer operação de suporte operacional
+- "relatorio" — se a mensagem é APENAS sobre: análise de dados, estatísticas, quantidades, volumes, tendências, SLA, distribuição, relatórios, dashboards ou qualquer consulta analítica/gerencial
+- "interativo" — se a mensagem é APENAS sobre: um ticket específico, listar tickets, alterar status ou prioridade, adicionar comentário, ou qualquer operação de suporte operacional
+- "ambos" — se a mensagem mistura os dois tipos (ex: "quantos tickets abertos? e fecha o ticket 9")
 
-Responda APENAS com "relatorio" ou "interativo", sem nenhum texto adicional.`;
+Responda APENAS com "relatorio", "interativo" ou "ambos", sem nenhum texto adicional.`;
 
 export async function classificarIntencao(mensagem: string): Promise<AgenteRoteado> {
   const response = await client.messages.create({
@@ -38,8 +39,9 @@ export async function classificarIntencao(mensagem: string): Promise<AgenteRotea
   const texto = (response.content[0] as Anthropic.TextBlock).text.trim().toLowerCase();
   console.log(`[ORQUESTRADOR] Intenção detectada: "${texto}" para mensagem: "${mensagem.slice(0, 60)}"`);
 
-  // Qualquer resposta que não seja "relatorio" vai para o agente interativo (fallback seguro)
-  return texto.startsWith("relatorio") ? "relatorio" : "interativo";
+  if (texto.startsWith("relatorio")) return "relatorio";
+  if (texto.startsWith("ambos")) return "ambos";
+  return "interativo";
 }
 
 export async function orquestradorStream(
@@ -50,13 +52,19 @@ export async function orquestradorStream(
   onChunk: (chunk: string) => void
 ): Promise<void> {
   const agente = await classificarIntencao(mensagemUsuario);
-  onAgente(agente);
 
-  if (agente === "relatorio") {
-    // Agente de relatórios: stateless, sem histórico, só leitura
+  if (agente === "ambos") {
+    // Intenção mista: roda o agente interativo primeiro (ação) e depois o de relatórios (consulta)
+    onAgente("interativo");
+    await agenteChatInterativoStream(ticketId, mensagemUsuario, historico, onChunk);
+    onAgente("relatorio");
     await agenteRelatorioStream(mensagemUsuario, onChunk);
   } else {
-    // Agente interativo: stateful, usa histórico, pode fazer ações com HITL
-    await agenteChatInterativoStream(ticketId, mensagemUsuario, historico, onChunk);
+    onAgente(agente);
+    if (agente === "relatorio") {
+      await agenteRelatorioStream(mensagemUsuario, onChunk);
+    } else {
+      await agenteChatInterativoStream(ticketId, mensagemUsuario, historico, onChunk);
+    }
   }
 }

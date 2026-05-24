@@ -63,7 +63,8 @@ export async function agenteChatInterativo(
   // com significado próximo à mensagem do usuário. Se houver, injetamos como
   // contexto no system prompt — o modelo responde com informações reais da empresa.
   const contextosRAG = await buscarConhecimentoRelevante(mensagemUsuario);
-  let systemPrompt = SYSTEM_INTERATIVO;
+  const hoje = new Date().toLocaleDateString("pt-BR");
+  let systemPrompt = `Data de hoje: ${hoje}.\n\n` + SYSTEM_INTERATIVO;
   if (contextosRAG.length > 0) {
     const contextosTexto = contextosRAG
       .map((c) => `### ${c.titulo}\n${c.conteudo}`)
@@ -161,7 +162,8 @@ export async function agenteChatInterativoStream(
   messages.push({ role: "user", content: mensagemUsuario });
 
   const contextosRAG = await buscarConhecimentoRelevante(mensagemUsuario);
-  let systemPrompt = SYSTEM_INTERATIVO;
+  const hoje = new Date().toLocaleDateString("pt-BR");
+  let systemPrompt = `Data de hoje: ${hoje}.\n\n` + SYSTEM_INTERATIVO;
   if (contextosRAG.length > 0) {
     const contextosTexto = contextosRAG
       .map((c) => `### ${c.titulo}\n${c.conteudo}`)
@@ -217,13 +219,4 @@ export async function agenteChatInterativoStream(
     messages.push({ role: "user", content: toolResults });
     respostaFinal = ""; // próxima iteração vai gerar o texto final
   }
-
-  if (!respostaFinal) respostaFinal = "Não consegui gerar uma resposta.";
-
-  await prisma.mensagemChat.createMany({
-    data: [
-      { ticketId, role: "user",      conteudo: mensagemUsuario },
-      { ticketId, role: "assistant", conteudo: respostaFinal  },
-    ],
-  });
 }

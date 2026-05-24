@@ -77,14 +77,22 @@ router.post("/stream", async (req: Request, res: Response) => {
   res.setHeader("Connection", "keep-alive");
 
   try {
+    let respostaAcumulada = '';
     await agenteChatInterativoStream(
       ticketId ?? null,
       mensagem,
       historicoFormatado,
       (chunk) => {
+        respostaAcumulada += chunk;
         res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
       }
     );
+    await prisma.mensagemChat.createMany({
+      data: [
+        { ticketId: ticketId ?? null, role: "user",      conteudo: mensagem },
+        { ticketId: ticketId ?? null, role: "assistant", conteudo: respostaAcumulada || "Sem resposta" },
+      ],
+    });
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
   } catch (err) {
     res.write(`data: ${JSON.stringify({ erro: "Erro interno ao processar mensagem" })}\n\n`);
@@ -99,7 +107,7 @@ router.get("/historico", async (req: Request, res: Response, next: NextFunction)
     const ticketId = req.query.ticketId ? Number(req.query.ticketId) : undefined;
 
     const mensagens = await prisma.mensagemChat.findMany({
-      where: { ticketId: ticketId ?? undefined },
+      where: { ticketId: ticketId ?? null },
       orderBy: { criadoEm: "asc" },
       take: 50,
     });

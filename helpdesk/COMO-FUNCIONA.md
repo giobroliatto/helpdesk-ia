@@ -242,6 +242,14 @@ seguidos). Por isso, o agente salva ambas as mensagens **só após sucesso** —
 o user antes e o agente falhar, a mensagem fica "órfã" no histórico e corrompe chamadas
 futuras.
 
+**Persistência por rota:** o salvamento no banco foi centralizado nas rotas
+(`routes/chat.ts` e `routes/orquestrador.ts`), não dentro dos agentes. Assim, tanto
+o fluxo do agente interativo quanto do agente de relatórios sempre persistem o histórico.
+
+**Filtro por ticketId:** o `GET /historico` usa `ticketId: null` quando nenhum ticket
+está selecionado (conversas gerais). Passar `undefined` ao Prisma 7 ignora o filtro
+e retorna todas as mensagens do sistema — por isso usa-se `ticketId ?? null` explicitamente.
+
 ---
 
 ## Estrutura de arquivos relevantes
@@ -280,7 +288,8 @@ frontend/src/app/
 │   ├── ticket.service.ts     ← HTTP calls para /tickets
 │   └── chat.service.ts       ← HTTP calls + SSE para /chat e /orquestrador
 └── pipes/
-    └── label.pipe.ts         ← formata valores do banco para exibição
+    ├── label.pipe.ts         ← formata valores do banco para exibição
+    └── markdown.pipe.ts      ← converte markdown (tabelas, headers, listas, código) em HTML seguro usando `marked`
 ```
 
 ---

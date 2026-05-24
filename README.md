@@ -211,6 +211,7 @@ Usuário: "como estão os tickets esta semana?"
 - Angular 21.2.0 (Standalone)
 - Angular Material 21.2.11
 - RxJS 7.8
+- marked 18 (renderização de markdown nas respostas dos agentes)
 - SCSS
 - TypeScript
 

@@ -36,6 +36,7 @@ router.post("/stream", async (req: Request, res: Response) => {
   res.setHeader("Connection", "keep-alive");
 
   try {
+    let respostaAcumulada = '';
     await orquestradorStream(
       ticketId ?? null,
       mensagem,
@@ -44,9 +45,16 @@ router.post("/stream", async (req: Request, res: Response) => {
         res.write(`data: ${JSON.stringify({ agente })}\n\n`);
       },
       (chunk: string) => {
+        respostaAcumulada += chunk;
         res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
       }
     );
+    await prisma.mensagemChat.createMany({
+      data: [
+        { ticketId: ticketId ?? null, role: "user",      conteudo: mensagem },
+        { ticketId: ticketId ?? null, role: "assistant", conteudo: respostaAcumulada || "Sem resposta" },
+      ],
+    });
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
   } catch (err) {
     console.error("[ORQUESTRADOR] Erro:", err);

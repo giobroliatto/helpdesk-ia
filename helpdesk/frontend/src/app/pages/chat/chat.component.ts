@@ -94,7 +94,7 @@ export class ChatComponent implements OnInit {
     });
 
     // Cria o balão do assistente vazio — será preenchido chunk por chunk
-    const streamingMsg: MensagemComAgente = {
+    let streamingMsg: MensagemComAgente = {
       id: Date.now() + 1,
       ticketId: null,
       role: 'assistant',
@@ -107,8 +107,22 @@ export class ChatComponent implements OnInit {
     this.chatService.enviarMensagemOrquestrador(
       textoEnviado,
       (agente) => {
-        // Primeiro evento do SSE: informa qual agente foi acionado
+        // Evento de roteamento: informa qual agente foi acionado.
+        // Se já há conteúdo no balão atual (caso "ambos"), cria um novo balão
+        // para o segundo agente em vez de sobrescrever o primeiro.
         this.ngZone.run(() => {
+          if (streamingMsg.conteudo.trim()) {
+            const novoBalao: MensagemComAgente = {
+              id: Date.now() + 2,
+              ticketId: null,
+              role: 'assistant',
+              conteudo: '',
+              criadoEm: new Date().toISOString()
+            };
+            this.mensagens.push(novoBalao);
+            streamingMsg = novoBalao;
+            this.scrollDown();
+          }
           streamingMsg.agente = agente as 'interativo' | 'relatorio';
         });
       },

@@ -33,6 +33,9 @@ export async function agenteRelatorioStream(
   onChunk: (chunk: string) => void
 ): Promise<void> {
 
+  const hoje = new Date().toLocaleDateString("pt-BR");
+  const systemComData = `Data de hoje: ${hoje}.\n\n` + SYSTEM_RELATORIOS;
+
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: mensagemUsuario },
   ];
@@ -43,7 +46,7 @@ export async function agenteRelatorioStream(
     const stream = client.messages.stream({
       model: MODEL,
       max_tokens: 800,
-      system: SYSTEM_RELATORIOS,
+      system: systemComData,
       tools: relatorioToolsSchema,
       messages,
     });
