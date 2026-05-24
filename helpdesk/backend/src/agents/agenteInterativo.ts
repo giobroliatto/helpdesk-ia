@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import prisma from "../db/prisma";
 import { ticketToolsSchema, executarTicketTool } from "../tools/ticketTools";
 import { buscarConhecimentoRelevante } from "../rag/buscar";
+import { logChamadaIA } from "../observabilidade/logger";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-sonnet-4-5";
@@ -74,6 +75,10 @@ export async function agenteChatInterativo(
   }
   // ----------------------------------------------------------
 
+  // acumuladores de observabilidade — somam tokens de TODAS as iterações do loop
+  const inicio = Date.now();
+  let totalInputTokens = 0, totalOutputTokens = 0, toolCallCount = 0;
+
   let response = await client.messages.create({
     model: MODEL,
     max_tokens: 500,
@@ -81,11 +86,14 @@ export async function agenteChatInterativo(
     tools: ticketToolsSchema,
     messages,
   });
+  totalInputTokens += response.usage.input_tokens;
+  totalOutputTokens += response.usage.output_tokens;
 
   // Loop de tool use — agente pode chamar ferramentas quantas vezes quiser.
   // IMPORTANTE: Claude pode retornar múltiplos tool_use em uma única resposta.
   // Todos devem ter um tool_result correspondente antes da próxima chamada da API.
   while (response.stop_reason === "tool_use") {
+    toolCallCount += response.content.filter(b => b.type === "tool_use").length;
     // 1. Adiciona a resposta do assistente (com todos os tool_use) ao histórico
     messages.push({ role: "assistant", content: response.content });
 
@@ -114,6 +122,8 @@ export async function agenteChatInterativo(
       tools: ticketToolsSchema,
       messages,
     });
+    totalInputTokens += response.usage.input_tokens;
+    totalOutputTokens += response.usage.output_tokens;
   }
 
   const textBlock = response.content.find((b) => b.type === "text") as Anthropic.TextBlock | undefined;
@@ -128,6 +138,15 @@ export async function agenteChatInterativo(
       { ticketId, role: "assistant", conteudo: respostaFinal  },
     ],
   });
+
+  logChamadaIA({
+    agente:       "interativo",
+    inputTokens:  totalInputTokens,
+    outputTokens: totalOutputTokens,
+    latenciaMs:   Date.now() - inicio,
+    toolCalls:    toolCallCount,
+    ticketId,
+  }).catch(console.error);
 
   return respostaFinal;
 }
@@ -174,6 +193,10 @@ export async function agenteChatInterativoStream(
 
   let respostaFinal = "";
 
+  // acumuladores de observabilidade
+  const inicio = Date.now();
+  let totalInputTokens = 0, totalOutputTokens = 0, toolCallCount = 0;
+
   // Loop: executa ferramentas normalmente (sem stream), streama apenas o texto final
   while (true) {
     const stream = client.messages.stream({
@@ -197,9 +220,13 @@ export async function agenteChatInterativoStream(
     }
 
     const finalMsg = await stream.finalMessage();
+    totalInputTokens += finalMsg.usage.input_tokens;
+    totalOutputTokens += finalMsg.usage.output_tokens;
 
     // Se não há mais ferramentas a chamar, a resposta final está pronta
     if (finalMsg.stop_reason !== "tool_use") break;
+
+    toolCallCount += finalMsg.content.filter(b => b.type === "tool_use").length;
 
     // Ferramentas: executa e continua o loop (sem streaming nessa parte)
     messages.push({ role: "assistant", content: finalMsg.content });
@@ -219,4 +246,13 @@ export async function agenteChatInterativoStream(
     messages.push({ role: "user", content: toolResults });
     respostaFinal = ""; // próxima iteração vai gerar o texto final
   }
+
+  logChamadaIA({
+    agente:       "interativo_stream",
+    inputTokens:  totalInputTokens,
+    outputTokens: totalOutputTokens,
+    latenciaMs:   Date.now() - inicio,
+    toolCalls:    toolCallCount,
+    ticketId,
+  }).catch(console.error);
 }

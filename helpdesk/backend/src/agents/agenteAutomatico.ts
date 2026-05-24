@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import prisma from "../db/prisma";
 import { buscarConhecimentoRelevante } from "../rag/buscar";
+import { logChamadaIA } from "../observabilidade/logger";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-sonnet-4-5";
@@ -136,6 +137,7 @@ Descrição: ${ticket.descricao}`;
   }
   // ----------------------------------------------------------
 
+  const inicio = Date.now();
   try {
     const response = await client.messages.create({
       model: MODEL,
@@ -143,6 +145,14 @@ Descrição: ${ticket.descricao}`;
       system: comRaciocinio ? SYSTEM_AUDITOR_COT : SYSTEM_AUDITOR_SIMPLES,
       messages: [{ role: "user", content: promptComRAG }],
     });
+
+    logChamadaIA({
+      agente:       comRaciocinio ? "automatico_cot" : "automatico",
+      inputTokens:  response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      latenciaMs:   Date.now() - inicio,
+      ticketId,
+    }).catch(console.error);
 
     const textBlock = response.content.find((b) => b.type === "text") as Anthropic.TextBlock | undefined;
     let textoResposta = textBlock?.text ?? "{}";

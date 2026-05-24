@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { agenteChatInterativoStream } from "./agenteInterativo";
 import { agenteRelatorioStream } from "./agenteRelatorios";
+import { logChamadaIA } from "../observabilidade/logger";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-sonnet-4-5";
@@ -29,12 +30,21 @@ Classifique a mensagem do usuário e responda APENAS com uma palavra:
 Responda APENAS com "relatorio", "interativo" ou "ambos", sem nenhum texto adicional.`;
 
 export async function classificarIntencao(mensagem: string): Promise<AgenteRoteado> {
+  const inicio = Date.now();
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 10,
     system: SYSTEM_CLASSIFICADOR,
     messages: [{ role: "user", content: mensagem }],
   });
+
+  logChamadaIA({
+    agente:       "orquestrador",
+    inputTokens:  response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+    latenciaMs:   Date.now() - inicio,
+    toolCalls:    0,
+  }).catch(console.error);
 
   const texto = (response.content[0] as Anthropic.TextBlock).text.trim().toLowerCase();
   console.log(`[ORQUESTRADOR] Intenção detectada: "${texto}" para mensagem: "${mensagem.slice(0, 60)}"`);

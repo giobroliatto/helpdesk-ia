@@ -56,3 +56,22 @@ model BaseConhecimento {
   embedding String   // vetor float[] serializado: "[0.12, 0.34, ...]"
   criadoEm DateTime @default(now())
 }
+
+// ================================================================
+// OBSERVABILIDADE — log de cada chamada à API da Anthropic
+//
+// Registra tokens (input/output), custo estimado, latência e
+// quantas tool calls foram feitas. Permite auditar quanto cada
+// agente custa e quanto tempo leva por invocação.
+// ================================================================
+model LogChamadaIA {
+  id           Int      @id @default(autoincrement())
+  agente       String   // "automatico" | "automatico_cot" | "interativo" | "relatorio" | "orquestrador"
+  inputTokens  Int
+  outputTokens Int
+  custoUsd     Float    // (inputTokens * $3/1M) + (outputTokens * $15/1M)
+  latenciaMs   Int
+  toolCalls    Int      @default(0)
+  ticketId     Int?
+  criadoEm     DateTime @default(now())
+}

@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { relatorioToolsSchema, executarRelatorioTool } from "../tools/relatorioTools";
+import { logChamadaIA } from "../observabilidade/logger";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-sonnet-4-5";
@@ -42,6 +43,10 @@ export async function agenteRelatorioStream(
 
   let respostaFinal = "";
 
+  // acumuladores de observabilidade
+  const inicio = Date.now();
+  let totalInputTokens = 0, totalOutputTokens = 0, toolCallCount = 0;
+
   while (true) {
     const stream = client.messages.stream({
       model: MODEL,
@@ -62,8 +67,12 @@ export async function agenteRelatorioStream(
     }
 
     const finalMsg = await stream.finalMessage();
+    totalInputTokens += finalMsg.usage.input_tokens;
+    totalOutputTokens += finalMsg.usage.output_tokens;
 
     if (finalMsg.stop_reason !== "tool_use") break;
+
+    toolCallCount += finalMsg.content.filter(b => b.type === "tool_use").length;
 
     messages.push({ role: "assistant", content: finalMsg.content });
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
@@ -86,4 +95,13 @@ export async function agenteRelatorioStream(
   if (!respostaFinal) {
     onChunk("Não consegui gerar o relatório.");
   }
+
+  logChamadaIA({
+    agente:       "relatorio",
+    inputTokens:  totalInputTokens,
+    outputTokens: totalOutputTokens,
+    latenciaMs:   Date.now() - inicio,
+    toolCalls:    toolCallCount,
+    ticketId:     null,
+  }).catch(console.error);
 }
