@@ -110,5 +110,15 @@ router.get("/historico", async (req: Request, res: Response, next: NextFunction)
   }
 });
 
+// DELETE /chat/historico — apaga todas as mensagens do chat geral (ticketId = null)
+router.delete("/historico", async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { count } = await prisma.mensagemChat.deleteMany({ where: { ticketId: null } });
+    res.json({ ok: true, removidas: count });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
 

@@ -1,6 +1,6 @@
 # Help Desk com Agentes de IA 🤖
 
-Um sistema completo de **Help Desk** com dois agentes de IA: um **interativo** (chat) e outro **automático** (análise de tickets).
+Um sistema completo de **Help Desk** com quatro agentes de IA: **automático** (triagem de tickets), **interativo** (chat), **relatórios** (analytics) e um **orquestrador** que roteia as mensagens do chat para o agente correto.
 
 ## 🎯 O Projeto
 
@@ -20,7 +20,7 @@ ia/
 ├── helpdesk/
 │   ├── backend/              # Node.js + Express + Agentes Claude
 │   │   ├── src/
-│   │   │   ├── agents/       # Agentes (interativo e automático)
+│   │   │   ├── agents/       # Agentes (automático, interativo, relatórios, orquestrador)
 │   │   │   ├── routes/       # Endpoints HTTP
 │   │   │   ├── tools/        # Ferramentas que os agentes usam
 │   │   │   └── db/           # Setup Prisma
@@ -172,6 +172,29 @@ Usuário: "como estão os tickets esta semana?"
 
 ---
 
+### Orquestrador
+
+- **Tipo**: Roteador (decide qual agente especializado responde)
+- **Arquivo**: `backend/src/agents/orquestrador.ts`
+- **Como funciona:**
+  1. Usuário envia mensagem pela tela de Chat (`POST /orquestrador/stream`)
+  2. Orquestrador classifica a intenção com Claude (`max_tokens: 10`)
+  3. Roteia para `agenteInterativo` (tickets/ações/HITL) ou `agenteRelatorios` (analytics)
+  4. Frontend recebe primeiro o badge do agente, depois os chunks de resposta em streaming
+
+**Exemplos de roteamento:**
+```
+"muda o status do ticket #3 para resolvido"
+→ Claude classifica: "interativo"
+→ Agente interativo aplica HITL: busca ticket, exibe dados, pede confirmação
+
+"quantos tickets foram criados essa semana?"
+→ Claude classifica: "relatorio"
+→ Agente de relatórios chama distribuicao_tickets() + tickets_por_periodo(7)
+```
+
+---
+
 ## 🛠️ Tecnologias
 
 **Backend:**
@@ -315,6 +338,25 @@ Usuário: "fecha o ticket 7"
 
 **As tools também estão no servidor MCP** — o host (VS Code Copilot) fica
 responsável pelo HITL ao usar via MCP.
+
+---
+
+### Orquestrador (Roteamento Multi-agente)
+
+Um único endpoint de chat classifica a intenção do usuário e roteia para o agente especializado:
+
+```
+Mensagem do usuário
+       │
+       ▼ Claude com max_tokens: 10
+"relatorio" ou "interativo"
+       │
+       ├─ "relatorio"   → agenteRelatorios (analytics, stateless)
+       └─ "interativo"  → agenteInterativo (CRUD, HITL, com histórico)
+```
+
+**Vantagem:** cada agente mantém seu system prompt limpo e focado no seu domínio.
+O custo de roteamento é mínimo — uma chamada com `max_tokens: 10`.
 
 ---
 

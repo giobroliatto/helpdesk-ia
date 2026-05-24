@@ -7,9 +7,36 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { ChatService } from '../../services/chat.service';
 import { Mensagem } from '../../models/ticket.model';
 import { MarkdownPipe } from '../../pipes/markdown.pipe';
+
+// Estende Mensagem com o agente que respondeu (só em runtime, não persiste no banco)
+interface MensagemComAgente extends Mensagem {
+  agente?: 'interativo' | 'relatorio';
+}
+
+// Diálogo de confirmação de limpeza do histórico
+@Component({
+  selector: 'dialog-confirmar-limpar',
+  standalone: true,
+  imports: [MatButtonModule, MatDialogModule, MatIconModule],
+  template: `
+    <h2 mat-dialog-title style="display:flex;align-items:center;gap:8px">
+      <mat-icon color="warn">delete_sweep</mat-icon> Limpar histórico
+    </h2>
+    <mat-dialog-content>
+      <p style="margin:0;color:#424242">Isso remove <strong>todas as mensagens</strong> do banco de dados permanentemente.</p>
+      <p style="margin:8px 0 0;color:#757575;font-size:13px">Esta ação não pode ser desfeita.</p>
+    </mat-dialog-content>
+    <mat-dialog-actions align="end" style="gap:8px;padding:16px">
+      <button mat-stroked-button mat-dialog-close>Cancelar</button>
+      <button mat-raised-button color="warn" [mat-dialog-close]="true">Limpar tudo</button>
+    </mat-dialog-actions>
+  `
+})
+export class DialogConfirmarLimparComponent {}
 
 @Component({
   selector: 'app-chat',
@@ -17,7 +44,7 @@ import { MarkdownPipe } from '../../pipes/markdown.pipe';
   imports: [
     CommonModule, FormsModule, MatCardModule, MatFormFieldModule,
     MatInputModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule,
-    MarkdownPipe
+    MatDialogModule, MarkdownPipe
   ],
   templateUrl: './chat.component.html',
   styleUrl: './chat.component.scss'
@@ -25,17 +52,28 @@ import { MarkdownPipe } from '../../pipes/markdown.pipe';
 export class ChatComponent implements OnInit {
   @ViewChild('messagesEnd') messagesEnd!: ElementRef;
 
-  mensagens: Mensagem[] = [];
+  mensagens: MensagemComAgente[] = [];
   texto = '';
   enviando = false;
 
   // NgZone é necessário porque fetch() nativo roda fora da detecção de mudanças do Angular.
   // Sem ngZone.run(), os chunks chegam mas a tela não atualiza até o próximo evento do Angular.
-  constructor(private chatService: ChatService, private ngZone: NgZone) {}
+  constructor(private chatService: ChatService, private ngZone: NgZone, private dialog: MatDialog) {}
 
   ngOnInit(): void {
     this.chatService.buscarHistorico().subscribe({
       next: (msgs) => { this.mensagens = msgs; this.scrollDown(); }
+    });
+  }
+
+  limparHistorico(): void {
+    if (this.enviando) return;
+    const ref = this.dialog.open(DialogConfirmarLimparComponent, { width: '360px' });
+    ref.afterClosed().subscribe((confirmado) => {
+      if (!confirmado) return;
+      this.chatService.limparHistorico().subscribe({
+        next: () => { this.mensagens = []; }
+      });
     });
   }
 
@@ -56,7 +94,7 @@ export class ChatComponent implements OnInit {
     });
 
     // Cria o balão do assistente vazio — será preenchido chunk por chunk
-    const streamingMsg: Mensagem = {
+    const streamingMsg: MensagemComAgente = {
       id: Date.now() + 1,
       ticketId: null,
       role: 'assistant',
@@ -66,8 +104,14 @@ export class ChatComponent implements OnInit {
     this.mensagens.push(streamingMsg);
     this.scrollDown();
 
-    this.chatService.enviarMensagemStream(
+    this.chatService.enviarMensagemOrquestrador(
       textoEnviado,
+      (agente) => {
+        // Primeiro evento do SSE: informa qual agente foi acionado
+        this.ngZone.run(() => {
+          streamingMsg.agente = agente as 'interativo' | 'relatorio';
+        });
+      },
       (chunk) => {
         // ngZone.run() força o Angular a detectar a mudança e atualizar a tela
         this.ngZone.run(() => {

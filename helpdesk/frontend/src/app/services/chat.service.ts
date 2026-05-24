@@ -55,8 +55,49 @@ export class ChatService {
     }).catch(() => onErro());
   }
 
+  // Versão orquestrada: envia para /orquestrador/stream que classifica a intenção
+  // e delega para o agente correto. Inclui callback onAgente com o nome do agente escolhido.
+  enviarMensagemOrquestrador(
+    mensagem: string,
+    onAgente: (agente: string) => void,
+    onChunk: (chunk: string) => void,
+    onDone: () => void,
+    onErro: () => void,
+    ticketId?: number
+  ): void {
+    fetch('http://localhost:3000/orquestrador/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mensagem, ticketId }),
+    }).then(async (response) => {
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value, { stream: true });
+        for (const line of text.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.agente) onAgente(data.agente);
+            if (data.chunk)  onChunk(data.chunk);
+            if (data.done)   onDone();
+            if (data.erro)   onErro();
+          } catch { /* linha parcial — ignora */ }
+        }
+      }
+    }).catch(() => onErro());
+  }
+
   buscarHistorico(ticketId?: number): Observable<Mensagem[]> {
     const params = ticketId ? `?ticketId=${ticketId}` : '';
     return this.http.get<Mensagem[]>(`${this.baseUrl}/historico${params}`);
+  }
+
+  limparHistorico(): Observable<{ ok: boolean; removidas: number }> {
+    return this.http.delete<{ ok: boolean; removidas: number }>(`${this.baseUrl}/historico`);
   }
 }

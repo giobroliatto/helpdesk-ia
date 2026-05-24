@@ -18,7 +18,7 @@ como agentes baseados em LLM (Large Language Model) funcionam na prática.
 
 ---
 
-## Os dois agentes de IA
+## Os agentes de IA
 
 ### 1. Agente Automático (`src/agents/agenteAutomatico.ts`)
 
@@ -121,6 +121,61 @@ exatamente 2 blocos `tool_result`, um para cada ID.
 
 ---
 
+### 3. Agente de Relatórios (`src/agents/agenteRelatorios.ts`)
+
+**Quando é ativado:** quando o orquestrador identifica intenção analítica, ou diretamente via `POST /relatorio/stream`.
+
+**O que faz:** responde perguntas sobre volume, distribuição e SLA dos tickets com dados reais.
+
+**Como funciona por dentro:**
+- É **stateless** — não mantém histórico. Cada consulta é independente.
+- Usa o mesmo padrão de tool use loop do agente interativo, mas com ferramentas de análise (`relatorioTools.ts`).
+- Resposta sempre em streaming, formatada com tabelas em markdown.
+
+**Ferramentas disponíveis:**
+- `tickets_por_periodo(dias)` — volume de tickets criados nos últimos N dias
+- `distribuicao_tickets()` — distribuição por categoria, prioridade e status
+- `tickets_sem_atualizacao(dias)` — tickets parados há N dias (possíveis violações de SLA)
+
+---
+
+### 4. Orquestrador (`src/agents/orquestrador.ts`)
+
+**Quando é ativado:** toda vez que o usuário envia uma mensagem pela tela de Chat (via `POST /orquestrador/stream`).
+
+**O que faz:** classifica a intenção da mensagem e delega para o agente especializado correto.
+
+**Como funciona por dentro:**
+
+```
+Usuário: "quantos tickets foram criados esta semana?"
+       │
+       ▼ [orquestrador.ts] classificarIntencao()
+Envia a mensagem para Claude com system prompt classificador:
+  max_tokens: 10  ← precisa retornar apenas uma palavra
+  "classifique como 'relatorio' ou 'interativo'"
+       │
+       ▼ Claude retorna: "relatorio"
+       │
+       ▼ onAgente("relatorio") → frontend exibe badge "Agente de Relatórios"
+       │
+       ▼ Delega para agenteRelatorioStream()
+       │
+       ▼ Chunks chegam em streaming ao frontend como de costume
+```
+
+**Eventos SSE emitidos pelo endpoint `/orquestrador/stream`:**
+1. `{"agente": "relatorio"}` ou `{"agente": "interativo"}` — frontend atualiza o badge
+2. `{"chunk": "..."}` — tokens da resposta em streaming
+3. `{"done": true}` — fim da resposta
+
+**Por que um orquestrador em vez de um agente único:**
+- Cada agente tem system prompt especializado, ferramentas próprias e regras específicas.
+- Misturar tudo num agente só geraria conflitos de instrução e aumentaria o contexto desnecessariamente.
+- O roteamento custa apenas uma chamada com `max_tokens: 10` — negligível.
+
+---
+
 ## As ferramentas disponíveis (`src/tools/ticketTools.ts`)
 
 | Ferramenta | O que faz | Quando Claude usa |
@@ -172,8 +227,7 @@ Backend cria ticket no banco (status: "aberto", sugestaoIA: null)
 |---|---|---|
 | Criar ticket | Agente Automático | Ao criar qualquer ticket |
 | Detalhe do ticket | Agente Automático | Exibe resultado do agente (sugestaoIA) |
-| Chat | Agente Interativo | Ao enviar mensagem no chat |
-| Relatórios | Agente de Relatórios | Ao fazer uma consulta analítica |
+| Chat | Orquestrador → Interativo ou Relatórios | Ao enviar mensagem — roteado automaticamente |
 
 ---
 
@@ -198,11 +252,13 @@ backend/src/
 ├── routes/
 │   ├── tickets.ts            ← CRUD de tickets + disparo do agente automático
 │   ├── chat.ts               ← endpoint do chat + endpoint SSE de streaming
-│   └── relatorio.ts          ← endpoint SSE do agente de relatórios
+│   ├── relatorio.ts          ← endpoint SSE direto do agente de relatórios
+│   └── orquestrador.ts       ← endpoint SSE orquestrado (roteia para interativo ou relatórios)
 ├── agents/
 │   ├── agenteAutomatico.ts   ← agente de auditoria com RAG (sem tool use, só prompt)
 │   ├── agenteInterativo.ts   ← agente de chat com tool use loop + RAG + streaming
-│   └── agenteRelatorios.ts   ← agente de análise stateless com tool use + streaming
+│   ├── agenteRelatorios.ts   ← agente de análise stateless com tool use + streaming
+│   └── orquestrador.ts       ← classifica intenção e roteia para o agente correto
 ├── tools/
 │   ├── ticketTools.ts        ← funções de acesso ao banco + schemas (alterar_status, etc.)
 │   └── relatorioTools.ts     ← funções de análise + schemas (tickets_por_periodo, etc.)
@@ -219,24 +275,12 @@ frontend/src/app/
 │   ├── ticket-list/          ← tabela de tickets
 │   ├── ticket-create/        ← formulário de criação
 │   ├── ticket-detail/        ← detalhe + sugestão IA + polling + atualizar status
-│   ├── chat/                 ← interface de chat com o agente interativo
-│   └── relatorios/           ← interface de consulta ao agente de relatórios
+│   └── chat/                 ← Assistente IA (gerencia tickets + relatórios via orquestrador)
 ├── services/
 │   ├── ticket.service.ts     ← HTTP calls para /tickets
-│   ├── chat.service.ts       ← HTTP calls + SSE para /chat
-│   └── relatorio.service.ts  ← SSE para /relatorio
+│   └── chat.service.ts       ← HTTP calls + SSE para /chat e /orquestrador
 └── pipes/
     └── label.pipe.ts         ← formata valores do banco para exibição
-```
-│   ├── ticket-list/          ← tabela de tickets
-│   ├── ticket-create/        ← formulário de criação
-│   ├── ticket-detail/        ← detalhe + sugestão IA + polling + atualizar status
-│   └── chat/                 ← interface de chat com o agente interativo
-├── services/
-│   ├── ticket.service.ts     ← HTTP calls para /tickets
-│   └── chat.service.ts       ← HTTP calls para /chat
-└── pipes/
-    └── label.pipe.ts         ← formata valores do banco para exibição ("media" → "Média")
 ```
 
 ---

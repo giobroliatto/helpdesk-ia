@@ -4,6 +4,7 @@ import cors from "cors";
 import ticketsRouter from "./routes/tickets";
 import chatRouter from "./routes/chat";
 import relatorioRouter from "./routes/relatorio";
+import orquestradorRouter from "./routes/orquestrador";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,6 +17,7 @@ app.use(express.json());
 app.use("/tickets", ticketsRouter);
 app.use("/chat", chatRouter);
 app.use("/relatorio", relatorioRouter);
+app.use("/orquestrador", orquestradorRouter);
 
 // Health check
 app.get("/health", (_req, res) => {

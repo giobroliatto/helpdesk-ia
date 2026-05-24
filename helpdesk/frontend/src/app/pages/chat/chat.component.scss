@@ -6,7 +6,17 @@
   height: calc(100vh - 140px);
 }
 
-mat-card-header { margin-bottom: 8px; }
+mat-card-header {
+  margin-bottom: 8px;
+  // empurra o botão de limpar para a direita sem quebrar o layout do Material
+  ::ng-deep .mat-mdc-card-header-text { flex: 1; }
+}
+
+.btn-limpar {
+  color: #9e9e9e;
+  margin-left: auto;
+  &:not([disabled]):hover { color: #c62828; }
+}
 
 .messages-area {
   flex: 1;
@@ -26,6 +36,12 @@ mat-card-header { margin-bottom: 8px; }
 
 .messages { display: flex; flex-direction: column; gap: 12px; padding: 8px 16px; }
 
+.dica-topo {
+  border-bottom: 1px solid #e0e0e0;
+  margin-bottom: 4px;
+  padding-bottom: 16px;
+}
+
 .message {
   display: flex;
   align-items: flex-end;
@@ -42,8 +58,25 @@ mat-card-header { margin-bottom: 8px; }
     mat-icon { font-size: 20px; width: 20px; height: 20px; }
   }
 
-  .bubble {
+  .bubble-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     max-width: 75%;
+  }
+
+  .agente-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    align-self: flex-start;
+    letter-spacing: 0.2px;
+    &.badge-relatorio { background: #e8f5e9; color: #2e7d32; }
+    &.badge-interativo { background: #e3f2fd; color: #1565c0; }
+  }
+
+  .bubble {
     padding: 10px 14px;
     border-radius: 16px;
     line-height: 1.5;
@@ -55,6 +88,7 @@ mat-card-header { margin-bottom: 8px; }
     justify-content: flex-end;
     .bubble { background: #1976d2; color: white; border-bottom-right-radius: 4px; }
     .avatar { background: #1976d2; mat-icon { color: white; } }
+    .bubble-container { align-items: flex-end; }
   }
 
   &.assistant {
