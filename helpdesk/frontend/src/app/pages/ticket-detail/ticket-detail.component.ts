@@ -1,12 +1,15 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
 import { TicketService } from '../../services/ticket.service';
 import { Ticket } from '../../models/ticket.model';
 import { LabelPipe } from '../../pipes/label.pipe';
@@ -15,8 +18,9 @@ import { LabelPipe } from '../../pipes/label.pipe';
   selector: 'app-ticket-detail',
   standalone: true,
   imports: [
-    CommonModule, MatCardModule, MatButtonModule, MatIconModule,
+    CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatSelectModule, MatProgressSpinnerModule, MatDividerModule,
+    MatFormFieldModule, MatInputModule,
     LabelPipe
   ],
   templateUrl: './ticket-detail.component.html',
@@ -26,6 +30,8 @@ export class TicketDetailComponent implements OnInit, OnDestroy {
   ticket: Ticket | null = null;
   carregando = true;
   erro = '';
+  novoComentario = '';
+  enviandoComentario = false;
   private pollInterval: ReturnType<typeof setInterval> | null = null;
 
   // em_analise é definido automaticamente pelo agente — o usuário não deve setar manualmente
@@ -79,6 +85,20 @@ export class TicketDetailComponent implements OnInit, OnDestroy {
     if (!this.ticket) return;
     this.ticketService.atualizarStatus(this.ticket.id, status).subscribe({
       next: (ticket) => { this.ticket = ticket; }
+    });
+  }
+
+  enviarComentario(): void {
+    if (!this.novoComentario.trim() || !this.ticket || this.enviandoComentario) return;
+    this.enviandoComentario = true;
+    this.ticketService.adicionarComentario(this.ticket.id, this.novoComentario).subscribe({
+      next: (comentario) => {
+        if (!this.ticket!.comentarios) this.ticket!.comentarios = [];
+        this.ticket!.comentarios.push(comentario);
+        this.novoComentario = '';
+        this.enviandoComentario = false;
+      },
+      error: () => { this.enviandoComentario = false; }
     });
   }
 

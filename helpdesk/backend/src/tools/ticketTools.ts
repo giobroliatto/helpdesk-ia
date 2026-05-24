@@ -18,7 +18,10 @@ export async function listarTickets(filtros?: { status?: string; prioridade?: st
 export async function buscarTicketPorId(id: number) {
   const ticket = await prisma.ticket.findUnique({
     where: { id },
-    include: { mensagens: { orderBy: { criadoEm: "asc" } } },
+    include: {
+      mensagens: { orderBy: { criadoEm: "asc" } },
+      comentarios: { orderBy: { criadoEm: "asc" } },
+    },
   });
   return ticket;
 }
@@ -42,12 +45,27 @@ export async function contarTicketsPorStatus() {
   return resultados.map((r: { status: string; _count: { id: number } }) => ({ status: r.status, total: r._count.id }));
 }
 
-export async function fecharTicket(id: number) {
+export async function alterarStatus(id: number, status: string) {
   const ticket = await prisma.ticket.update({
     where: { id },
-    data: { status: "fechado" },
+    data: { status },
   });
   return ticket;
+}
+
+export async function alterarPrioridade(id: number, prioridade: string) {
+  const ticket = await prisma.ticket.update({
+    where: { id },
+    data: { prioridade },
+  });
+  return ticket;
+}
+
+export async function adicionarComentario(ticketId: number, conteudo: string) {
+  const comentario = await prisma.comentarioTicket.create({
+    data: { ticketId, conteudo },
+  });
+  return comentario;
 }
 
 // Definição das ferramentas no formato que a Anthropic espera (schema)
@@ -92,17 +110,59 @@ export const ticketToolsSchema = [
     },
   },
   {
-    name: "fechar_ticket",
+    name: "alterar_status",
     description:
-      "Fecha um ticket alterando seu status para 'fechado'. " +
-      "REGRA OBRIGATÓRIA: só chamar esta tool após o usuário confirmar EXPLICITAMENTE o fechamento. " +
-      "Antes de chamar, sempre use buscar_ticket para mostrar os detalhes do ticket e pedir confirmação.",
+      "Altera o status de um ticket para qualquer valor: aberto, em_analise, resolvido ou fechado. " +
+      "REGRA OBRIGATÓRIA (HUMAN-IN-THE-LOOP): antes de chamar esta tool, use buscar_ticket para " +
+      "mostrar os detalhes atuais e pergunte explicitamente ao usuário se confirma a mudança. " +
+      "SÓ execute após confirmação clara ('sim', 'pode', 'confirmo', etc.).",
     input_schema: {
       type: "object" as const,
       properties: {
-        id: { type: "number", description: "ID numérico do ticket a fechar" },
+        id: { type: "number", description: "ID numérico do ticket" },
+        status: {
+          type: "string",
+          enum: ["aberto", "em_analise", "resolvido", "fechado"],
+          description: "Novo status do ticket",
+        },
       },
-      required: ["id"],
+      required: ["id", "status"],
+    },
+  },
+  {
+    name: "alterar_prioridade",
+    description:
+      "Altera a prioridade de um ticket para: baixa, media, alta ou critica. " +
+      "REGRA OBRIGATÓRIA (HUMAN-IN-THE-LOOP): antes de chamar esta tool, use buscar_ticket para " +
+      "mostrar a prioridade atual e pergunte ao usuário se confirma a mudança. " +
+      "SÓ execute após confirmação clara.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "number", description: "ID numérico do ticket" },
+        prioridade: {
+          type: "string",
+          enum: ["baixa", "media", "alta", "critica"],
+          description: "Nova prioridade do ticket",
+        },
+      },
+      required: ["id", "prioridade"],
+    },
+  },
+  {
+    name: "adicionar_comentario",
+    description:
+      "Adiciona um comentário interno ao ticket. Use para registrar observações, " +
+      "atualizações de andamento ou comunicados sobre o ticket. " +
+      "REGRA OBRIGATÓRIA (HUMAN-IN-THE-LOOP): mostre o texto do comentário ao usuário " +
+      "e peça confirmação antes de registrá-lo.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "number", description: "ID numérico do ticket" },
+        conteudo: { type: "string", description: "Texto do comentário a registrar" },
+      },
+      required: ["id", "conteudo"],
     },
   },
 ];
@@ -119,8 +179,12 @@ export async function executarTicketTool(
       return buscarTicketPorId(input.id as number);
     case "resumo_tickets":
       return contarTicketsPorStatus();
-    case "fechar_ticket":
-      return fecharTicket(input.id as number);
+    case "alterar_status":
+      return alterarStatus(input.id as number, input.status as string);
+    case "alterar_prioridade":
+      return alterarPrioridade(input.id as number, input.prioridade as string);
+    case "adicionar_comentario":
+      return adicionarComentario(input.id as number, input.conteudo as string);
     default:
       throw new Error(`Ferramenta desconhecida: ${nome}`);
   }

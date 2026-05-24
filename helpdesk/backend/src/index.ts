@@ -3,6 +3,7 @@ import express, { NextFunction, Request, Response } from "express";
 import cors from "cors";
 import ticketsRouter from "./routes/tickets";
 import chatRouter from "./routes/chat";
+import relatorioRouter from "./routes/relatorio";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,6 +15,7 @@ app.use(express.json());
 // Rotas
 app.use("/tickets", ticketsRouter);
 app.use("/chat", chatRouter);
+app.use("/relatorio", relatorioRouter);
 
 // Health check
 app.get("/health", (_req, res) => {

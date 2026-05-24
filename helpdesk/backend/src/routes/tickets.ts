@@ -16,12 +16,15 @@ router.get("/", async (_req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// GET /tickets/:id — busca um ticket pelo ID com suas mensagens
+// GET /tickets/:id — busca um ticket pelo ID com suas mensagens e comentários
 router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const ticket = await prisma.ticket.findUnique({
       where: { id: Number(req.params.id) },
-      include: { mensagens: { orderBy: { criadoEm: "asc" } } },
+      include: {
+        mensagens: { orderBy: { criadoEm: "asc" } },
+        comentarios: { orderBy: { criadoEm: "asc" } },
+      },
     });
 
     if (!ticket) {
@@ -30,6 +33,33 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
     }
 
     res.json(ticket);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /tickets/:id/comentarios — adiciona um comentário manual ao ticket
+router.post("/:id/comentarios", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const ticketId = Number(req.params.id);
+    const { conteudo, autor } = req.body as { conteudo: string; autor?: string };
+
+    if (!conteudo?.trim()) {
+      res.status(400).json({ erro: "conteudo é obrigatório" });
+      return;
+    }
+
+    const existe = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+    if (!existe) {
+      res.status(404).json({ erro: "Ticket não encontrado" });
+      return;
+    }
+
+    const comentario = await prisma.comentarioTicket.create({
+      data: { ticketId, conteudo: conteudo.trim(), autor: autor?.trim() || "Usuário" },
+    });
+
+    res.status(201).json(comentario);
   } catch (err) {
     next(err);
   }

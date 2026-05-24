@@ -55,6 +55,10 @@ response do `POST /tickets` já foi enviado antes do agente terminar. O frontend
 polling a cada 3 segundos para detectar quando a análise concluiu (o status muda de
 `em_analise` para `aberto` e `sugestaoIA` é preenchida).
 
+A partir desta versão, o Agente Automático também usa **RAG**: busca artigos relevantes
+na base de conhecimento antes de chamar o Claude, enriquecendo a sugestão de solução
+com procedimentos reais da empresa em vez de respostas genéricas.
+
 Este padrão é exatamente o que você usaria num sistema real de auditoria automática,
 por exemplo: análise automática de sinistros, validação de cadastros, triagem de chamados.
 
@@ -122,10 +126,20 @@ exatamente 2 blocos `tool_result`, um para cada ID.
 | Ferramenta | O que faz | Quando Claude usa |
 |---|---|---|
 | `listar_tickets` | Lista tickets com filtros de status/prioridade | "mostra todos os tickets abertos" |
-| `buscar_ticket` | Busca um ticket pelo ID com mensagens | "o que tem no ticket #3?" |
+| `buscar_ticket` | Busca um ticket pelo ID com mensagens e comentários | "o que tem no ticket #3?" |
 | `resumo_tickets` | Conta tickets por status | "quantos tickets tem em cada status?" |
-| `fechar_ticket` | Fecha um ticket (HITL: só após confirmação) | "fecha o ticket 7" → Claude pede confirmação antes |
-| `atualizar_ticket` | Atualiza campos de um ticket | não exposta no agente interativo |
+| `alterar_status` | Muda o status do ticket para aberto/em_analise/resolvido/fechado (HITL) | "fecha o ticket 7" → pede confirmação antes |
+| `alterar_prioridade` | Muda a prioridade do ticket para baixa/media/alta/critica (HITL) | "muda prioridade do #5 para alta" → pede confirmação |
+| `adicionar_comentario` | Registra um comentário interno no ticket (HITL) | "adiciona um comentário no ticket 3" → confirma texto |
+| `atualizarTicket` | Atualiza múltiplos campos de um ticket | usado internamente pelos agentes |
+
+## Ferramentas do Agente de Relatórios (`src/tools/relatorioTools.ts`)
+
+| Ferramenta | O que faz |
+|---|---|
+| `tickets_por_periodo` | Todos os tickets criados nos últimos N dias |
+| `distribuicao_tickets` | Distribuição por categoria, prioridade e status |
+| `tickets_sem_atualizacao` | Tickets abertos/em análise parados há N dias |
 
 ---
 
@@ -159,6 +173,7 @@ Backend cria ticket no banco (status: "aberto", sugestaoIA: null)
 | Criar ticket | Agente Automático | Ao criar qualquer ticket |
 | Detalhe do ticket | Agente Automático | Exibe resultado do agente (sugestaoIA) |
 | Chat | Agente Interativo | Ao enviar mensagem no chat |
+| Relatórios | Agente de Relatórios | Ao fazer uma consulta analítica |
 
 ---
 
@@ -182,14 +197,17 @@ backend/src/
 ├── index.ts                  ← servidor Express, dotenv, CORS, error handler
 ├── routes/
 │   ├── tickets.ts            ← CRUD de tickets + disparo do agente automático
-│   └── chat.ts               ← endpoint do chat + endpoint SSE de streaming
+│   ├── chat.ts               ← endpoint do chat + endpoint SSE de streaming
+│   └── relatorio.ts          ← endpoint SSE do agente de relatórios
 ├── agents/
-│   ├── agenteAutomatico.ts   ← agente de auditoria (sem tool use, só prompt)
-│   └── agenteInterativo.ts   ← agente de chat com tool use loop + RAG + streaming
+│   ├── agenteAutomatico.ts   ← agente de auditoria com RAG (sem tool use, só prompt)
+│   ├── agenteInterativo.ts   ← agente de chat com tool use loop + RAG + streaming
+│   └── agenteRelatorios.ts   ← agente de análise stateless com tool use + streaming
 ├── tools/
-│   └── ticketTools.ts        ← funções de acesso ao banco + schemas das ferramentas
+│   ├── ticketTools.ts        ← funções de acesso ao banco + schemas (alterar_status, etc.)
+│   └── relatorioTools.ts     ← funções de análise + schemas (tickets_por_periodo, etc.)
 ├── mcp/
-│   └── server.ts             ← servidor MCP (expõe as mesmas tools via protocolo padrão)
+│   └── server.ts             ← servidor MCP (expõe alterar_status, alterar_prioridade, adicionar_comentario)
 ├── rag/
 │   ├── embeddings.ts         ← converte texto em vetor com modelo local
 │   └── buscar.ts             ← busca por similaridade de cosseno na BaseConhecimento
@@ -198,6 +216,18 @@ backend/src/
 
 frontend/src/app/
 ├── pages/
+│   ├── ticket-list/          ← tabela de tickets
+│   ├── ticket-create/        ← formulário de criação
+│   ├── ticket-detail/        ← detalhe + sugestão IA + polling + atualizar status
+│   ├── chat/                 ← interface de chat com o agente interativo
+│   └── relatorios/           ← interface de consulta ao agente de relatórios
+├── services/
+│   ├── ticket.service.ts     ← HTTP calls para /tickets
+│   ├── chat.service.ts       ← HTTP calls + SSE para /chat
+│   └── relatorio.service.ts  ← SSE para /relatorio
+└── pipes/
+    └── label.pipe.ts         ← formata valores do banco para exibição
+```
 │   ├── ticket-list/          ← tabela de tickets
 │   ├── ticket-create/        ← formulário de criação
 │   ├── ticket-detail/        ← detalhe + sugestão IA + polling + atualizar status
@@ -237,7 +267,9 @@ VS Code Copilot (host)
 | `listar_tickets` | `{ status?, prioridade? }` | Lista tickets com filtros |
 | `buscar_ticket` | `{ id: number }` | Detalhe completo de um ticket |
 | `resumo_tickets` | `{}` | Contagem por status |
-| `fechar_ticket` | `{ id: number }` | Fecha um ticket (HITL via host) |
+| `alterar_status` | `{ id, status }` | Muda o status do ticket (HITL via host) |
+| `alterar_prioridade` | `{ id, prioridade }` | Muda a prioridade do ticket (HITL via host) |
+| `adicionar_comentario` | `{ id, conteudo }` | Adiciona comentário interno ao ticket (HITL via host) |
 
 **Diferença entre usar as tools via agente vs via MCP:**
 
@@ -450,34 +482,36 @@ Usuário: "fecha o ticket 7"
        ▼  Claude usa buscar_ticket(7)
 Obtém: titulo="Impressora offline", status="aberto", prioridade="media"
        │
-       ▼  Claude responde (SEM chamar fechar_ticket ainda)
+       ▼  Claude responde (SEM chamar alterar_status ainda)
 "Ticket #7: Impressora offline no 3º andar
  Status atual: aberto | Prioridade: média
- Confirma o fechamento?"
+ Confirma mudar status para 'fechado'?"
        │
        ▼  Usuário: "sim, confirmo"
        │
-       ▼  SÓ AGORA Claude chama fechar_ticket(7)
-"Ticket #7 fechado com sucesso."
+       ▼  SÓ AGORA Claude chama alterar_status(7, "fechado")
+"Status do ticket #7 alterado para 'fechado' com sucesso."
 ```
 
 ### Onde a regra está implementada
 
 A regra está em **dois lugares**, para máxima confiabilidade:
 
-**1. No `description` da tool (`ticketTools.ts`):**
+**1. No `description` de cada tool (`ticketTools.ts`):**
 ```
-"REGRA OBRIGATÓRIA: só chamar esta tool após o usuário confirmar
-EXPLICITAMENTE o fechamento."
+"REGRA OBRIGATÓRIA (HUMAN-IN-THE-LOOP): antes de chamar esta tool, use buscar_ticket
+para mostrar os dados atuais e pergunte ao usuário se confirma a mudança.
+SÓ execute após confirmação clara."
 ```
 
 **2. No `SYSTEM_INTERATIVO` (`agenteInterativo.ts`):**
 ```
-"REGRA DE FECHAMENTO (HUMAN-IN-THE-LOOP): Antes de fechar qualquer ticket:
-1. Usar buscar_ticket para obter detalhes atuais
-2. Apresentar: título, status, prioridade e tempo em aberto
-3. Perguntar explicitamente se confirma o fechamento
-4. SÓ chamar fechar_ticket após confirmação clara do usuário"
+"REGRAS DE AÇÕES (HUMAN-IN-THE-LOOP): Antes de qualquer ação de escrita:
+1. Usar buscar_ticket para dados atuais
+2. Mostrar o que será feito
+3. Pedir confirmação explícita
+4. SÓ executar após confirmação clara
+Aplica-se a: alterar_status, alterar_prioridade e adicionar_comentario."
 ```
 
 ### HITL no chat vs HITL via MCP
@@ -492,6 +526,6 @@ EXPLICITAMENTE o fechamento."
 
 | Arquivo | Mudança |
 |---|---|
-| `src/tools/ticketTools.ts` | Função `fecharTicket()`, schema `fechar_ticket`, `case` no switch |
-| `src/agents/agenteInterativo.ts` | Regra HITL no `SYSTEM_INTERATIVO` |
-| `src/mcp/server.ts` | Tool `fechar_ticket` exposta via MCP |
+| `src/tools/ticketTools.ts` | Substituiu `fecharTicket` por `alterarStatus`, `alterarPrioridade`, `adicionarComentario` |
+| `src/agents/agenteInterativo.ts` | Regras HITL atualizadas para as 3 novas tools |
+| `src/mcp/server.ts` | Tools `alterar_status`, `alterar_prioridade`, `adicionar_comentario` via MCP |

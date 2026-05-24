@@ -110,9 +110,11 @@ Ou configure o `.vscode/mcp.json` (já incluído) e o VS Code inicia automaticam
 
 **Ferramentas disponíveis:**
 - `listar_tickets` — lista tickets com filtros
-- `buscar_ticket` — detalhes completos de um ticket
+- `buscar_ticket` — detalhes completos de um ticket (inclui comentários)
 - `resumo_tickets` — contagem por status
-- `fechar_ticket` — fecha um ticket (com HITL: só após confirmação do usuário)
+- `alterar_status` — muda o status do ticket para aberto/em_analise/resolvido/fechado (com HITL)
+- `alterar_prioridade` — muda a prioridade do ticket (com HITL)
+- `adicionar_comentario` — registra um comentário interno no ticket (com HITL)
 
 > As mesmas ferramentas também são expostas via **servidor MCP** (`src/mcp/server.ts`),
 > permitindo que o VS Code Copilot e o Claude Desktop as utilizem diretamente.
@@ -138,8 +140,34 @@ Usuário: "minha VPN não está conectando"
 **Exemplo:**
 ```
 Novo ticket: "Impressora não funciona no 3º andar"
+→ RAG encontra artigo relevante: "Problemas de impressora - troubleshooting"
+→ Artigo é injetado no prompt junto com título + descrição
 → Agente classifica: prioridade="media", categoria="ti", sugestao="Verificar conexão"
-→ Ticket atualizado automaticamente
+→ Ticket atualizado automaticamente com sugestão enriquecida pela base de conhecimento
+```
+
+---
+
+### Agente de Relatórios
+
+- **Tipo**: Analítico / Stateless (cada consulta é independente)
+- **Arquivo**: `backend/src/agents/agenteRelatorios.ts`
+- **Como funciona:**
+  1. Usuário faz uma pergunta analítica no frontend `/relatorios`
+  2. Agente busca dados reais usando ferramentas de análise
+  3. Resposta chega em streaming com tabelas e insights acionáveis
+
+**Ferramentas disponíveis:**
+- `tickets_por_periodo` — volume de tickets criados nos últimos N dias
+- `distribuicao_tickets` — distribuição por categoria, prioridade e status
+- `tickets_sem_atualizacao` — tickets parados há N dias (possíveis violações de SLA)
+
+**Exemplo de uso:**
+```
+Usuário: "como estão os tickets esta semana?"
+→ Agente chama distribuicao_tickets() + tickets_por_periodo(7)
+→ Gera tabela com distribuição + alerta sobre tickets críticos
+→ Resposta em streaming com markdown formatado
 ```
 
 ---
@@ -261,9 +289,9 @@ Backend                           Frontend
 - Component: `NgZone.run()` força Angular a detectar mudanças fora do Zone.js
 
 ### Human-in-the-Loop (HITL)
-O agente interativo pode **fechar tickets**, mas nunca age sem confirmação explícita do
-usuário. A regra está em dois lugares para máxima confiabilidade: no `description` da
-tool e no `SYSTEM_INTERATIVO`.
+O agente interativo pode alterar tickets (status, prioridade) e adicionar comentários,
+mas nunca age sem confirmação explícita do usuário. A regra está em dois lugares para
+máxima confiabilidade: no `description` da tool e no `SYSTEM_INTERATIVO`.
 
 ```
 Usuário: "fecha o ticket 7"
@@ -271,19 +299,21 @@ Usuário: "fecha o ticket 7"
        ▼  Claude usa buscar_ticket(7) primeiro
 "Ticket #7: Impressora offline no 3º andar
  Status: aberto | Prioridade: média
- Confirma o fechamento?"
+ Confirma mudar status para 'fechado'?"
        │
        ▼  Usuário: "sim, pode fechar"
        │
-       ▼  SÓ AGORA Claude chama fechar_ticket(7)
-"Ticket #7 fechado com sucesso."
+       ▼  SÓ AGORA Claude chama alterar_status(7, "fechado")
+"Status do ticket #7 alterado para 'fechado' com sucesso."
 ```
+
+**Aplica-se a:** `alterar_status`, `alterar_prioridade` e `adicionar_comentario`
 
 **Dois níveis de HITL:**
 - `description` da tool: instrui o modelo diretamente no schema
 - `SYSTEM_INTERATIVO`: regra explícita com os 4 passos obrigatórios
 
-**A tool `fechar_ticket` também está no servidor MCP** — o host (VS Code Copilot) fica
+**As tools também estão no servidor MCP** — o host (VS Code Copilot) fica
 responsável pelo HITL ao usar via MCP.
 
 ---

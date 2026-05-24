@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import prisma from "../db/prisma";
+import { buscarConhecimentoRelevante } from "../rag/buscar";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-sonnet-4-5";
@@ -46,16 +47,29 @@ export async function agenteAuditarTicket(ticketId: number): Promise<void> {
   const prompt = `Analise este ticket de suporte:
 
 Título: ${ticket.titulo}
-Descrição: ${ticket.descricao}
+Descrição: ${ticket.descricao}`;
 
-Classifique e sugira solução conforme as instruções.`;
+  // ---- RAG: injeta conhecimento relevante da base interna ----
+  // Busca artigos semanticamente próximos ao conteúdo do ticket.
+  // Se encontrados, são injetados no prompt para enriquecer a sugestão de solução.
+  const contextosRAG = await buscarConhecimentoRelevante(`${ticket.titulo} ${ticket.descricao}`);
+  const promptComRAG = contextosRAG.length > 0
+    ? prompt + `\n\nCONHECIMENTO DA BASE INTERNA (use para melhorar a sugestão de solução):\n` +
+      contextosRAG.map((c) => `### ${c.titulo}\n${c.conteudo}`).join("\n\n") +
+      `\n\nClassifique e sugira solução conforme as instruções.`
+    : prompt + `\n\nClassifique e sugira solução conforme as instruções.`;
+
+  if (contextosRAG.length > 0) {
+    console.log(`[AGENTE AUTO] RAG: ${contextosRAG.length} artigo(s) encontrado(s): ${contextosRAG.map(c => c.titulo).join(", ")}`);
+  }
+  // ----------------------------------------------------------
 
   try {
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: 200,
       system: SYSTEM_AUDITOR,
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content: promptComRAG }],
     });
 
     const textBlock = response.content.find((b) => b.type === "text") as Anthropic.TextBlock | undefined;

@@ -78,6 +78,55 @@
           </div>
         </mat-card-content>
       </mat-card>
+
+      <!-- Comentários -->
+      <mat-card class="comentarios-card">
+        <mat-card-header>
+          <mat-icon mat-card-avatar>comment</mat-icon>
+          <mat-card-title>Comentários</mat-card-title>
+          <mat-card-subtitle>{{ (ticket.comentarios?.length || 0) }} comentário(s)</mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content>
+          <div *ngIf="!ticket.comentarios?.length" class="no-comentarios">
+            <mat-icon>chat_bubble_outline</mat-icon>
+            <span>Nenhum comentário ainda.</span>
+          </div>
+
+          <div class="comentarios-lista">
+            <div *ngFor="let c of ticket.comentarios" class="comentario-item">
+              <div class="comentario-header">
+                <mat-icon>{{ c.autor === 'Agente IA' ? 'smart_toy' : 'person' }}</mat-icon>
+                <strong>{{ c.autor }}</strong>
+                <span class="comentario-data">{{ formatarData(c.criadoEm) }}</span>
+              </div>
+              <p class="comentario-conteudo">{{ c.conteudo }}</p>
+            </div>
+          </div>
+
+          <mat-divider *ngIf="ticket.comentarios?.length" style="margin: 16px 0" />
+
+          <!-- Formulário de novo comentário -->
+          <div class="novo-comentario">
+            <mat-form-field appearance="outline" class="comentario-field">
+              <mat-label>Novo comentário</mat-label>
+              <textarea
+                matInput
+                [(ngModel)]="novoComentario"
+                placeholder="Escreva uma observação sobre este ticket..."
+                rows="2">
+              </textarea>
+            </mat-form-field>
+            <button
+              mat-raised-button
+              color="primary"
+              (click)="enviarComentario()"
+              [disabled]="!novoComentario.trim() || enviandoComentario">
+              <mat-icon>send</mat-icon>
+              Comentar
+            </button>
+          </div>
+        </mat-card-content>
+      </mat-card>
     </div>
   </ng-container>
 </div>

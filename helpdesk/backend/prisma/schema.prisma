@@ -22,6 +22,18 @@ model Ticket {
   atualizadoEm DateTime @updatedAt
 
   mensagens    MensagemChat[]
+  comentarios  ComentarioTicket[]
+}
+
+// Comentários adicionados por agentes ou usuários num ticket
+model ComentarioTicket {
+  id        Int      @id @default(autoincrement())
+  ticketId  Int
+  conteudo  String
+  autor     String   @default("Agente IA")
+  criadoEm DateTime @default(now())
+
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
 }
 
 model MensagemChat {

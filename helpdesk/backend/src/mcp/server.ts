@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { listarTickets, buscarTicketPorId, contarTicketsPorStatus, fecharTicket } from "../tools/ticketTools";
+import { listarTickets, buscarTicketPorId, contarTicketsPorStatus, alterarStatus, alterarPrioridade, adicionarComentario } from "../tools/ticketTools";
 
 // ================================================================
 // SERVIDOR MCP DO HELPDESK
@@ -79,20 +79,62 @@ server.tool(
 );
 
 // -----------------------------------------------------------------
-// TOOL: fechar_ticket
-// HITL: o host (VS Code Copilot) é responsável por pedir confirmação
-// antes de invocar esta tool — ela executa o fechamento diretamente.
+// TOOL: alterar_status
+// HITL: o host deve pedir confirmação antes de invocar esta tool.
 // -----------------------------------------------------------------
 server.tool(
-  "fechar_ticket",
-  "Fecha um ticket alterando seu status para 'fechado'. Usar apenas após confirmação explícita do usuário.",
+  "alterar_status",
+  "Altera o status de um ticket. Valores válidos: aberto, em_analise, resolvido, fechado. Usar apenas após confirmação explícita do usuário.",
   {
-    id: z.number().describe("ID numérico do ticket a fechar"),
+    id: z.number().describe("ID numérico do ticket"),
+    status: z
+      .enum(["aberto", "em_analise", "resolvido", "fechado"])
+      .describe("Novo status do ticket"),
   },
-  async ({ id }) => {
-    const ticket = await fecharTicket(id);
+  async ({ id, status }) => {
+    const ticket = await alterarStatus(id, status);
     return {
-      content: [{ type: "text", text: `Ticket #${id} fechado com sucesso.\n${JSON.stringify(ticket, null, 2)}` }],
+      content: [{ type: "text", text: `Status do ticket #${id} alterado para "${status}".\n${JSON.stringify(ticket, null, 2)}` }],
+    };
+  }
+);
+
+// -----------------------------------------------------------------
+// TOOL: alterar_prioridade
+// HITL: o host deve pedir confirmação antes de invocar esta tool.
+// -----------------------------------------------------------------
+server.tool(
+  "alterar_prioridade",
+  "Altera a prioridade de um ticket. Valores válidos: baixa, media, alta, critica. Usar apenas após confirmação explícita do usuário.",
+  {
+    id: z.number().describe("ID numérico do ticket"),
+    prioridade: z
+      .enum(["baixa", "media", "alta", "critica"])
+      .describe("Nova prioridade do ticket"),
+  },
+  async ({ id, prioridade }) => {
+    const ticket = await alterarPrioridade(id, prioridade);
+    return {
+      content: [{ type: "text", text: `Prioridade do ticket #${id} alterada para "${prioridade}".\n${JSON.stringify(ticket, null, 2)}` }],
+    };
+  }
+);
+
+// -----------------------------------------------------------------
+// TOOL: adicionar_comentario
+// HITL: o host deve confirmar o texto antes de invocar esta tool.
+// -----------------------------------------------------------------
+server.tool(
+  "adicionar_comentario",
+  "Adiciona um comentário interno a um ticket. Usar apenas após confirmação do usuário sobre o conteúdo.",
+  {
+    id: z.number().describe("ID numérico do ticket"),
+    conteudo: z.string().describe("Texto do comentário"),
+  },
+  async ({ id, conteudo }) => {
+    const comentario = await adicionarComentario(id, conteudo);
+    return {
+      content: [{ type: "text", text: `Comentário adicionado ao ticket #${id}.\n${JSON.stringify(comentario, null, 2)}` }],
     };
   }
 );

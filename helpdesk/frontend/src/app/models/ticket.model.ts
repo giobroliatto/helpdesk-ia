@@ -8,6 +8,15 @@ export interface Ticket {
   sugestaoIA: string | null;
   criadoEm: string;
   atualizadoEm: string;
+  comentarios?: ComentarioTicket[];
+}
+
+export interface ComentarioTicket {
+  id: number;
+  ticketId: number;
+  conteudo: string;
+  autor: string;
+  criadoEm: string;
 }
 
 export interface Mensagem {
