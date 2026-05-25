@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import prisma from "../db/prisma";
 import { agenteChatInterativo, agenteChatInterativoStream } from "../agents/agenteInterativo";
+import { validarInput } from "../guardrails/validarInput";
 
 const router = Router();
 
@@ -17,7 +18,12 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
       return;
     }
 
-    // Busca histórico de mensagens anteriores desta conversa (contexto para o modelo)
+    const validacao = validarInput(mensagem);
+    if (!validacao.valido) {
+      res.status(400).json({ erro: validacao.motivo });
+      return;
+    }
+
     const historico = await prisma.mensagemChat.findMany({
       where: { ticketId: ticketId ?? null },
       orderBy: { criadoEm: "desc" },
